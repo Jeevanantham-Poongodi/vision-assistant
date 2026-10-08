@@ -84,10 +84,13 @@ def test_live_rules():  # contract 5.2 and 6.2 (BE-08)
     assert (live.guardian_queue_size, live.guardian_max_drops) == (32, 3)
     assert live.location_ping_interval_ms == 10_000  # contract 10: one stored location per 10 s
     assert THRESHOLDS.alerts.offline_alert_throttle_ms == 60_000
+    assert THRESHOLDS.alerts.assistance_after_ms == 3000       # BE-14: low confidence for 3 s
+    assert THRESHOLDS.alerts.assistance_throttle_ms == 60_000
 
 
 def test_websocket_close_codes():  # contract 5.4
-    assert WS_CLOSE == {"normal": 1000, "session_not_found": 4001, "replaced": 4002, "protocol": 4003}
+    assert WS_CLOSE == {"normal": 1000, "session_not_found": 4001, "replaced": 4002, "protocol": 4003,
+                        "unauthorized": 4004}
 
 
 def test_detector_confidence():

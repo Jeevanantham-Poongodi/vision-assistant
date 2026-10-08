@@ -106,6 +106,9 @@ class SessionState:
     # Alerts (BE-10).
     hazard_last: dict[str, float] = field(default_factory=dict)  # cooldown key -> time.monotonic()
     last_emergency: tuple[UUID, float] | None = None              # (alert_id, time.monotonic())
+    low_conf_since: float | None = None   # BE-14: when low_confidence_scene turned true (monotonic)
+    assist_raised: bool = False           # BE-14: one assistance_request per low-confidence period
+    last_assist_at: float | None = None   # BE-14: throttle (monotonic)
     # Presence.
     last_seen_ms: int | None = None
     silent: bool = False

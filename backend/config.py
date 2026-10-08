@@ -80,6 +80,8 @@ class AlertRules(_Frozen):
     hazard_levels: tuple[RiskLevel, ...] = ("critical", "high")
     hazard_throttle_ms: int = 10_000  # per cooldown key
     offline_alert_throttle_ms: int = 60_000  # system alert "user went offline": max one per minute
+    assistance_after_ms: int = 3000          # BE-14: low_confidence_scene true this long -> assistance_request
+    assistance_throttle_ms: int = 60_000     # BE-14: max one assistance_request per minute per session
 
 
 class LiveRules(_Frozen):
@@ -119,6 +121,7 @@ WS_CLOSE = {
     "session_not_found": 4001,  # unknown session or already ended
     "replaced": 4002,           # a newer connection took over the session
     "protocol": 4003,           # e.g. no valid hello within 5 s
+    "unauthorized": 4004,       # BE-17: missing, invalid or wrong-person token
 }
 
 
@@ -134,6 +137,9 @@ class Settings(BaseSettings):
     # Demo only: e.g. ^https://[a-z0-9-]+\.trycloudflare\.com$ so a new tunnel URL needs no restart.
     # It lets any trycloudflare.com page call the API from a browser; leave empty outside the demo.
     allowed_origin_regex: str = ""
+    # BE-17 demo tokens. Off by default: raw IDs work as in the MVP contract.
+    auth_required: bool = False
+    auth_secret: str = ""  # HMAC key for tokens; empty = random per run (tokens die on restart)
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     feature_guardian: bool = False

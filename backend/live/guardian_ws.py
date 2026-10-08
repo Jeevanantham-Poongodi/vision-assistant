@@ -10,9 +10,10 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from auth import socket_allows
 from config import WS_CLOSE
 from errors import AppError
-from live import alerts
+from live import alerts, webrtc
 from live.messages import send_guardian_message
 from live import hub as hub_module
 from live.hub import GuardianConnection, SessionHub, to_alert
@@ -68,6 +69,11 @@ async def handle_message(conn: GuardianConnection, hub: SessionHub, session_id: 
         message_id, delivered = await send_guardian_message(hub, session_id, conn.guardian_id, msg.text)
         conn.post("message_delivered", MessageDeliveredPayload(
             message_id=message_id, text=msg.text, delivered=delivered).model_dump(mode="json"))
+    elif env.type in webrtc.WEBRTC_TYPES:  # relayed to the phone with guardian_id added (BE-15)
+        if webrtc.too_large(text):
+            post_error(conn, "UNSUPPORTED_MESSAGE", "WebRTC signalling messages are limited to 64 KB.")
+            return
+        await webrtc.from_guardian(hub, session_id, conn.guardian_id, env.type, env.payload)
     elif env.type == "ack_alert":
         try:
             ack = AckAlertPayload.model_validate(env.payload)
@@ -94,6 +100,9 @@ async def authorise(ws: WebSocket, session_id: UUID) -> tuple[dict[str, Any], UU
         guardian_id = UUID(ws.query_params.get("guardian_id", ""))
     except ValueError:
         guardian_id = None
+    if not socket_allows(ws, "guardian", guardian_id):  # BE-17, only with AUTH_REQUIRED=true
+        await ws.close(code=WS_CLOSE["unauthorized"], reason="UNAUTHORIZED")
+        return None
     linked = guardian_id is not None and session is not None and any(
         link["user_id"] == session["user_id"] for link in await repo.get_linked_users(guardian_id))
     if session is None or session["status"] != "active" or not linked:

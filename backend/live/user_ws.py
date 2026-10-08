@@ -9,9 +9,10 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
+from auth import socket_allows
 from config import THRESHOLDS, WS_CLOSE
 from errors import AppError
-from live import alerts
+from live import alerts, webrtc
 from live.frame_worker import FrameWorker, now_ms
 from live.hub import SessionHub
 from schemas import (
@@ -90,6 +91,11 @@ async def handle_message(conn: Connection, worker: FrameWorker, hub: SessionHub,
             await alerts.trigger_emergency(hub, session_id, emergency.trigger, note=emergency.note)
         except AppError as exc:
             await conn.send_error(exc.code, exc.message)
+    elif env.type in webrtc.WEBRTC_TYPES:  # relayed to guardians (BE-15)
+        if webrtc.too_large(text):
+            await conn.send_error("UNSUPPORTED_MESSAGE", "WebRTC signalling messages are limited to 64 KB.")
+            return
+        webrtc.from_user(hub, session_id, env.type, env.payload)
     elif env.type not in NOT_YET_HANDLED:
         await conn.send_error("UNSUPPORTED_MESSAGE", f"Unknown message type '{env.type}'.")
 
@@ -120,6 +126,9 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
     session = await ws.app.state.repo.get_session(session_id)
     if session is None or session["status"] != "active":
         await ws.close(code=WS_CLOSE["session_not_found"], reason="SESSION_NOT_FOUND")
+        return
+    if not socket_allows(ws, "user", session["user_id"]):  # BE-17, only with AUTH_REQUIRED=true
+        await ws.close(code=WS_CLOSE["unauthorized"], reason="UNAUTHORIZED")
         return
 
     try:

@@ -11,13 +11,15 @@ from typing import Any
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+import auth
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
 from db.repo import InMemoryRepo, SupabaseRepo
 from errors import install_error_handlers
 import integrations
 from live import guardian_ws, user_ws
 from live.hub import SessionHub
-from routers import alerts, assist, detect, guardians, sessions
+from routers import alerts, assist, detect, guardians, media, sessions
+from routers import auth as auth_routes
 from schemas import (
     ConfigResponse,
     DetectorConfig,
@@ -139,6 +141,7 @@ def create_app(s: Settings = settings) -> FastAPI:
         responses={422: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     )
     app.state.settings = s
+    app.state.auth_secret = auth.resolve_secret(s)  # BE-17 demo tokens
     app.state.repo = make_repo(s)
     app.state.hub = SessionHub(app.state.repo)  # the hub raises system alerts through the repo
     app.state.session_lock = asyncio.Lock()
@@ -157,6 +160,8 @@ def create_app(s: Settings = settings) -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(assist.router)
     app.include_router(guardians.router)
+    app.include_router(media.router)
+    app.include_router(auth_routes.router)
     app.include_router(user_ws.router)
     app.include_router(guardian_ws.router)
     return app

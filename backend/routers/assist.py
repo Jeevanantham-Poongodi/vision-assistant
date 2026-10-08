@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
 import integrations
+from auth import Auth, require_user
 from config import API_PREFIX
 from errors import AppError
 from live.frame_worker import InvalidFrame, decode_b64, decode_jpeg, now_ms
@@ -39,13 +40,13 @@ async def _decodable(data: bytes) -> None:
 @router.post("/ask", response_model=AskResponse, responses={
     404: {"description": "SESSION_NOT_FOUND"}, 409: {"description": "NO_RECENT_FRAME"},
     503: {"description": "MODEL_NOT_READY (FEATURE_ASK=false)"}})
-async def ask(body: AskRequest, request: Request) -> AskResponse:
+async def ask(body: AskRequest, request: Request, p: Auth) -> AskResponse:
     """Distances and directions in the answer come only from our detections (grounding rule).
     A Gemini failure is not an HTTP error: the answer comes back with source "fallback"."""
     if not request.app.state.settings.feature_ask:
         raise AppError("MODEL_NOT_READY", "Ask AI is switched off (FEATURE_ASK=false).")
     started = time.perf_counter()
-    await _active_session(request, body.session_id)
+    require_user(p, (await _active_session(request, body.session_id))["user_id"])
     state = request.app.state.hub.state(body.session_id)
     fresh = state.latest_at_ms is not None and now_ms() - state.latest_at_ms <= FRESH_MS
 
@@ -77,7 +78,7 @@ async def ask(body: AskRequest, request: Request) -> AskResponse:
 @router.post("/ocr", response_model=OcrResponse, responses={
     400: {"description": "INVALID_FRAME"}, 404: {"description": "SESSION_NOT_FOUND"},
     503: {"description": "MODEL_NOT_READY (FEATURE_OCR=false, or no OCR on this server)"}})
-async def ocr(request: Request,
+async def ocr(request: Request, p: Auth,
               image: Annotated[UploadFile, File(description="JPEG or PNG, max 5 MB")],
               session_id: Annotated[UUID | None, Form()] = None,
               interpret: Annotated[bool, Form()] = True) -> OcrResponse:
@@ -88,7 +89,7 @@ async def ocr(request: Request,
     started = time.perf_counter()
     data = await _read_image(image)
     if session_id is not None:
-        await _active_session(request, session_id)
+        require_user(p, (await _active_session(request, session_id))["user_id"])
     if app.state.models.ocr != "available":
         raise AppError("MODEL_NOT_READY", "OCR is not available: Tesseract is not installed (TESSERACT_CMD).")
     try:

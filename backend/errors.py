@@ -30,6 +30,8 @@ ERROR_STATUS: dict[ErrorCode, int] = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
     "BAD_REQUEST": 400,
+    "UNAUTHORIZED": 401,
+    "FORBIDDEN": 403,
 }
 
 

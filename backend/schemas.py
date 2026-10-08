@@ -333,7 +333,7 @@ class NavigateResponse(ContractModel):
 
 
 class TtsRequest(ContractModel):  # 7.17 (P2)
-    text: Annotated[str, Field(min_length=1)]
+    text: Annotated[str, Field(min_length=1, max_length=1000)]  # a spoken answer, not a book
     lang: str = "en-IN"
 
 
@@ -349,6 +349,7 @@ ErrorCode = Literal[
     "INVALID_STATUS_TRANSITION", "NO_RECENT_FRAME", "DESTINATION_NOT_FOUND", "MODEL_NOT_READY",
     "UNSUPPORTED_MESSAGE", "PIPELINE_ERROR", "INTERNAL",
     "NOT_FOUND", "METHOD_NOT_ALLOWED", "BAD_REQUEST",  # raised by the framework itself
+    "UNAUTHORIZED", "FORBIDDEN",  # BE-17 demo tokens (only with AUTH_REQUIRED=true)
 ]
 
 
@@ -473,3 +474,21 @@ class MessageDeliveredPayload(ContractModel):  # 6.2 server -> guardian "message
     message_id: UUID
     text: str
     delivered: bool  # false: the phone was offline; messages are not queued
+
+
+class AssistanceRequestedPayload(ContractModel):  # 5.3 server -> phone "assistance_requested" (BE-14)
+    alert_id: UUID
+    spoken_text: str
+
+
+# --- Demo tokens (BE-17) -------------------------------------------------------------------
+
+class DemoTokenRequest(ContractModel):
+    user_id: UUID
+
+
+class DemoTokenResponse(ContractModel):
+    token: str
+    user_id: UUID
+    role: Literal["user", "guardian"]
+    expires_at: UtcDatetime

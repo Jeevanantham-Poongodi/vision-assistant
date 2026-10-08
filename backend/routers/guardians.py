@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
+from auth import Auth, require_guardian
 from config import API_PREFIX
 from schemas import GeoPoint, LinkedUser, LinkedUserList
 
@@ -12,9 +13,10 @@ router = APIRouter(prefix=f"{API_PREFIX}/guardians", tags=["guardians"])
 
 
 @router.get("/{guardian_id}/users", response_model=LinkedUserList)
-async def linked_users(guardian_id: UUID, request: Request) -> LinkedUserList:
+async def linked_users(guardian_id: UUID, request: Request, p: Auth) -> LinkedUserList:
     """The guardian's linked users with their active session, online state and last location.
     An unknown guardian gets an empty list (not 404), so nobody can probe which IDs exist."""
+    require_guardian(p, guardian_id)
     repo, hub = request.app.state.repo, request.app.state.hub
     items = []
     for link in await repo.get_linked_users(guardian_id):

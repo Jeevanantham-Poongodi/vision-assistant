@@ -39,7 +39,7 @@ This file is the single source of truth that lets all five of us work in paralle
 | Distances | meters, float, rounded to 1 decimal place. `null` when unknown |
 | Coordinates | Image: pixels in the frame as it was sent (origin top-left). Geo: WGS84 `lat`/`lng` |
 | Images over JSON | Base64-encoded JPEG **without** the `data:image/jpeg;base64,` prefix |
-| Auth (MVP) | None. The seeded demo user and guardian IDs (section 10) are passed explicitly. Do not ship this beyond the demo |
+| Auth | MVP: none. The seeded demo user and guardian IDs (section 10) are passed explicitly. **Optional demo tokens (BE-17, `AUTH_REQUIRED=true`):** REST sends `Authorization: Bearer <token>`, WebSockets add `?token=<token>`; tokens come from `POST /api/v1/auth/demo-token` (7.19). A user may act only on their own sessions, a guardian only on linked users. Missing or invalid token → **401** `UNAUTHORIZED` (WS close `4004`); right token, wrong person or role → **403** `FORBIDDEN` (WS close `4004`). `/health`, `/config` and `/docs` stay open. Do not ship either mode beyond the demo |
 | CORS | Backend allows the Vite dev origin and the tunnel origin |
 | Supabase access | **Backend only.** The frontend never talks to Supabase directly; the service-role key stays on the server |
 
@@ -348,6 +348,8 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `frame_result` | `FrameResult` | One per processed frame |
 | `guardian_message` | `{ "message_id": "uuid", "guardian_name": "Priya", "text": "Move slightly right.", "spoken_text": "Your guardian says: Move slightly right." }` | When a guardian sends a message |
 | `emergency_ack` | `{ "alert_id": "uuid", "status": "open" \| "acknowledged", "spoken_text": "Your guardian has been notified." }` | After `emergency` is stored, and again when a guardian acknowledges it |
+| `assistance_requested` | `{ "alert_id": "uuid", "spoken_text": "I need assistance to determine the safest direction. I have asked your guardian." }` | When `frame_result.low_confidence_scene` has stayed `true` for 3 s (BE-14). One per low-confidence period, at most one per 60 s; guardians get the matching `assistance_request` alert |
+| `webrtc_offer` / `webrtc_answer` / `webrtc_ice` | The guardian's payload, unchanged, plus `guardian_id` | Relayed from a guardian (BE-15, see section 6) |
 | `error` | `{ "code": "INVALID_FRAME", "message": "...", "frame_id": 1042 }` | On a bad message. `frame_id` is `null` unless the error is about a frame. Text that is not a valid envelope (or a binary message) gets `UNSUPPORTED_MESSAGE` |
 | `pong` | `{}` | Reply to `ping` |
 
@@ -361,6 +363,7 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `4001` | `SESSION_NOT_FOUND` or session already ended |
 | `4002` | Replaced by a newer connection for the same session |
 | `4003` | Protocol violation (e.g. no `hello` within 5 s, the first message is not `hello`, or `hello.user_id` is not the session's user) |
+| `4004` | `UNAUTHORIZED`: only with `AUTH_REQUIRED=true`; missing or invalid `?token=`, or a token for another person or role (BE-17) |
 
 The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every 5 s. It tells the user by voice "Connection lost, reconnecting" once, and "Connected" on recovery.
 
@@ -396,7 +399,7 @@ Right after `welcome` the server sends the current `user_status` and, if one is 
 | `message_delivered` | `{ "message_id": "uuid", "text": "...", "delivered": true }` | After every `guardian_message`. `delivered: false` means the phone was offline; the message is dropped, not queued | P1 |
 | `error` / `pong` | as in section 5 | | P0 |
 
-> **Live video.** The MVP live view is the `snapshot` stream (2 fps). Real video and two-way voice over WebRTC is P2. If it is attempted, signalling messages (`webrtc_offer`, `webrtc_answer`, `webrtc_ice`, each with an SDP/ICE payload) are relayed through these same two sockets unchanged.
+> **Live video.** The MVP live view is the `snapshot` stream (2 fps). Real video and two-way voice over WebRTC is P2. The backend relays signalling (BE-15): `webrtc_offer`, `webrtc_answer` and `webrtc_ice` from a guardian reach the phone unchanged **plus `guardian_id`**, so the phone knows whom to answer; from the phone they go to the guardian named in `payload.guardian_id`, or to every guardian when it is absent. Each message is at most 64 KB (bigger → `error` `UNSUPPORTED_MESSAGE`); a guardian's message is dropped silently while the phone is offline. Media then flows browser to browser; mobile networks may need a TURN server (frontend).
 
 ---
 
@@ -425,6 +428,7 @@ All paths are prefixed with `/api/v1`. FastAPI's auto docs at `/docs` must match
 | POST | `/navigate` | Walking route with spoken steps | C4 via C3 | P2 |
 | POST | `/tts` | Server-side TTS fallback | C4 via C3 | P2 |
 | POST | `/stt` | Server-side STT fallback | C4 via C3 | P2 |
+| POST | `/auth/demo-token` | Demo token for a seeded user or guardian (BE-17) | C3 | P2 |
 
 ### 7.2 `GET /health`
 **200**
@@ -574,14 +578,18 @@ Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200),
   "geometry": { "type": "LineString", "coordinates": [[76.9558, 11.0168], [76.9560, 11.0170]] }
 }
 ```
-**404** `DESTINATION_NOT_FOUND`
+**404** `DESTINATION_NOT_FOUND` · **404** `SESSION_NOT_FOUND` · **503** `MODEL_NOT_READY` when `FEATURE_NAVIGATION=false`, when the navigation module or `MAPBOX_TOKEN` is missing, or when the provider fails or times out (15 s). A `route_id` is added if the provider does not return one.
 
 ### 7.17 `POST /tts` (P2)
-**Request** `{ "text": "Hello", "lang": "en-IN" }` → **200** `audio/mpeg` body.
+**Request** `{ "text": "Hello", "lang": "en-IN" }` (text 1–1000 characters) → **200** `audio/mpeg` body. **422** for an invalid `lang`; **503** `MODEL_NOT_READY` when the server-side TTS module is missing or fails.
 
 ### 7.18 `POST /stt` (P2)
-`multipart/form-data`: `audio` (webm/ogg/wav, ≤ 30 s), `lang` (default `en-IN`) → **200** `{ "text": "what is in front of me", "confidence": 0.88 }`
+`multipart/form-data`: `audio` (webm/ogg/wav, ≤ 30 s; the backend rejects other types and files over 10 MB with **422**), `lang` (default `en-IN`) → **200** `{ "text": "what is in front of me", "confidence": 0.88 }`. **503** `MODEL_NOT_READY` when the server-side STT module is missing or fails.
 
+
+### 7.19 `POST /auth/demo-token` (P2, BE-17)
+**Request** `{ "user_id": "uuid" }` → **200** `{ "token": "...", "user_id": "uuid", "role": "user" | "guardian", "expires_at": "ISO time" }` (valid 12 h). **404** `USER_NOT_FOUND`.
+Demo only: there is no password, so anyone can get a token for a seeded person. It lets the frontend exercise `AUTH_REQUIRED=true`; it does not protect real data. Tokens are HMAC-SHA256 signed with `AUTH_SECRET`.
 ---
 
 ## 8. Internal Python module contracts
@@ -767,7 +775,7 @@ export interface SpeechService {
 }
 
 // Utterance priorities: warnings use Warning.priority (100 / 80 / 50);
-// guardian_message 70; emergency_ack and system messages 60; Q&A / OCR answers 40.
+// guardian_message 70; emergency_ack, assistance_requested and system messages 60; Q&A / OCR answers 40.
 // A higher-priority utterance waits for the current one to finish unless interrupt=true.
 
 export interface ListenResult { transcript: string; confidence: number; intent: VoiceIntent; }
@@ -933,6 +941,8 @@ Coder 3 adds exception handlers so FastAPI's default 422 body is converted to th
 | `NOT_FOUND` | 404 | Unknown path (raised by the framework) |
 | `METHOD_NOT_ALLOWED` | 405 | Wrong HTTP method on a known path (raised by the framework) |
 | `BAD_REQUEST` | 400 | Any other client error raised by the framework |
+| `UNAUTHORIZED` | 401 / WS 4004 | Only with `AUTH_REQUIRED=true`: missing, invalid or expired token (BE-17) |
+| `FORBIDDEN` | 403 / WS 4004 | Only with `AUTH_REQUIRED=true`: a valid token for another person or role (BE-17) |
 
 ---
 

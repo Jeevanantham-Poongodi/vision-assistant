@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from pydantic import ValidationError
 
+from auth import Auth, require_user
 from config import API_PREFIX, THRESHOLDS
 from errors import AppError
 from live.frame_worker import InvalidFrame, decode_jpeg, now_ms
@@ -52,7 +53,7 @@ async def _process(pipeline: Any, data: bytes, frame_id: int, ts: int) -> dict:
     503: {"description": "MODEL_NOT_READY"}})
 async def detect(request: Request,
                  image: Annotated[UploadFile, File(description="JPEG or PNG, max 5 MB")],
-                 session_id: Annotated[UUID | None, Form()] = None) -> dict:
+                 p: Auth, session_id: Annotated[UUID | None, Form()] = None) -> dict:
     """Without session_id: frame_id 0, motion "unknown". With it: the session's own pipeline."""
     app = request.app
     settings = app.state.settings
@@ -69,6 +70,7 @@ async def detect(request: Request,
     session = await app.state.repo.get_session(session_id)
     if session is None or session["status"] != "active":
         raise AppError("SESSION_NOT_FOUND", f"Session {session_id} does not exist or has ended.")
+    require_user(p, session["user_id"])
     state = app.state.hub.state(session_id)
     async with state.pipeline_lock:  # same pipeline as the session's socket: tracking and cooldowns carry over
         if state.pipeline is None:

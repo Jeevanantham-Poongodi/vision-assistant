@@ -1,5 +1,6 @@
 # backend/integrations.py
-"""Bridges from the REST routes to Coder 4's Gemini and OCR code (BE-12). Owner: Coder 3.
+"""Bridges from the REST routes to Coder 4's Gemini, OCR, navigation and audio code
+(BE-12, BE-16). Owner: Coder 3.
 
 Contract 8.3 and Coder 4's actual code differ (module paths, sync vs async, tuple vs dict), so
 each bridge tries the contract's module first, then Coder 4's, and accepts either shape. When
@@ -12,6 +13,8 @@ import os
 from typing import Any
 
 from config import Settings
+from errors import AppError
+from schemas import ErrorCode
 
 log = logging.getLogger("vision_assistant")
 
@@ -22,6 +25,9 @@ ASK_MODULES = ("ai.gemini",)
 OCR_MODULES = ("ocr.reader", "ai.ocr")                    # contract 8.3, then Coder 4's
 INTERPRET_MODULES = ("ai.gemini", "ai.ocr_interpreter")   # contract 8.3, then Coder 4's
 FALLBACK_MODULES = ("speech.phrases",)
+NAV_MODULES = ("navigation.maps",)                          # BE-16
+AUDIO_MODULES = ("speech.server_audio",)                    # BE-16
+MEDIA_TIMEOUT_S = 15.0
 NO_TEXT = "I could not find any readable text. Try holding the camera closer and steady."
 
 # Contract 2.3: spoken position per direction.
@@ -37,7 +43,7 @@ class ModelNotReady(Exception):
 def export_env(settings: Settings) -> None:
     """Coder 4's code reads os.environ; copy the values from backend/.env once (never logged)."""
     for name, value in (("GEMINI_API_KEY", settings.gemini_api_key), ("GEMINI_MODEL", settings.gemini_model),
-                        ("TESSERACT_CMD", settings.tesseract_cmd)):
+                        ("TESSERACT_CMD", settings.tesseract_cmd), ("MAPBOX_TOKEN", settings.mapbox_token)):
         if value and not os.environ.get(name):
             os.environ[name] = value
 
@@ -174,3 +180,52 @@ async def interpret(ocr_text: str, image_jpeg: bytes | None) -> tuple[str, str]:
         except Exception as exc:
             log.warning("OCR: interpret_ocr failed (%s); reading the text as-is", type(exc).__name__)
     return plain, "tesseract"
+
+
+# --- Navigation and server-side audio (contract 7.16-7.18, BE-16) ---
+
+KNOWN_CODES = set(ErrorCode.__args__)
+
+
+def provider_error(exc: Exception) -> AppError:
+    """Coder 4's NavigationError / SpeechServiceError carry (code, status_code, message)."""
+    code, status = getattr(exc, "code", None), getattr(exc, "status_code", None)
+    message = str(exc) or "The service failed."
+    if code in KNOWN_CODES:
+        return AppError(code, message, status=status)
+    if isinstance(status, int) and status < 500:
+        return AppError("BAD_REQUEST", message, status=status)
+    return AppError("MODEL_NOT_READY", message)
+
+
+async def _media_call(modules: tuple[str, ...], name: str, what: str, **kwargs: Any) -> Any:
+    fn = find(modules, name)
+    if fn is None:
+        raise AppError("MODEL_NOT_READY", f"{what} is not available on this server yet.")
+    try:
+        return await call(fn, MEDIA_TIMEOUT_S, **kwargs)
+    except TimeoutError as exc:
+        raise AppError("MODEL_NOT_READY", f"{what} timed out.") from exc
+    except AppError:
+        raise
+    except Exception as exc:
+        if hasattr(exc, "code") and hasattr(exc, "status_code"):
+            raise provider_error(exc) from exc
+        log.exception("%s failed", what)
+        raise AppError("MODEL_NOT_READY", f"{what} failed.") from exc
+
+
+async def navigate(origin: dict, destination: str | dict) -> dict:
+    return await _media_call(NAV_MODULES, "get_walking_route", "Navigation", origin=origin, destination=destination)
+
+
+async def tts(text: str, lang: str) -> tuple[bytes, str]:
+    out = await _media_call(AUDIO_MODULES, "text_to_speech", "Text-to-speech", text=text, lang=lang)
+    if isinstance(out, (tuple, list)):
+        return out[0], out[1] or "audio/mpeg"
+    return out, "audio/mpeg"
+
+
+async def stt(audio: bytes, content_type: str, lang: str) -> dict:
+    return await _media_call(AUDIO_MODULES, "speech_to_text", "Speech-to-text",
+                             audio=audio, content_type=content_type, lang=lang)

@@ -16,7 +16,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from config import THRESHOLDS, Settings
-from live import alerts, hub
+from live import alerts, assistance, hub
 from live.hub import SessionState, post_all
 from live.stats import FrameStats
 from schemas import Envelope, ErrorCode, FramePayload, FrameResult
@@ -174,12 +174,15 @@ class FrameWorker:
         self._hazards(frame.frame_id, payload, image)
 
     def _hazards(self, frame_id: int, result: dict, image: np.ndarray) -> None:
-        """critical/high warnings -> hazard alerts (contract 3.3), in the background."""
+        """critical/high warnings -> hazard alerts (contract 3.3), a lasting low_confidence_scene ->
+        assistance_request (BE-14); both in the background."""
         if self.hub is None or self.hub.repo is None:
             return
         due = alerts.due_hazards(self.state, result)
         if due:
             self._spawn(alerts.raise_hazards(self.hub, self.session_id, due, frame_id, image, result["detections"]))
+        if assistance.due(self.state, result):  # low_confidence_scene for 3 s (BE-14)
+            self._spawn(assistance.raise_assistance(self.hub, self.session_id, image, result["detections"]))
 
     def _spawn(self, coro: Any) -> None:
         task = asyncio.create_task(coro)
