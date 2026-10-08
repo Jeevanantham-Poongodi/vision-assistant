@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
-from db.repo import InMemoryRepo
+from db.repo import InMemoryRepo, SupabaseRepo
 from errors import install_error_handlers
 from live import guardian_ws, user_ws
 from live.hub import SessionHub
@@ -107,12 +107,27 @@ def get_config(request: Request) -> ConfigResponse:
     )
 
 
+def make_repo(s: Settings) -> InMemoryRepo:
+    """Supabase when FEATURE_ALERTS_DB=true and the URL and key are set; memory only otherwise."""
+    if not s.supabase_enabled:
+        return InMemoryRepo()
+    try:
+        from db.client import SupabaseClient
+
+        return SupabaseRepo(SupabaseClient(s.supabase_url, s.supabase_service_role_key))
+    except Exception as exc:  # e.g. a malformed URL: run from memory rather than not at all
+        log.warning("Supabase disabled: could not create the client (%s)", type(exc).__name__)
+        return InMemoryRepo()
+
+
 def create_app(s: Settings = settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.started_at = time.monotonic()
+        await app.state.repo.start()  # Supabase: load users, links, active sessions, open alerts
         app.state.models = await load_models(s)
         yield
+        await app.state.repo.close()  # Supabase: let queued writes finish (max 5 s)
 
     app = FastAPI(
         title="Vision Assistant API",
@@ -122,7 +137,7 @@ def create_app(s: Settings = settings) -> FastAPI:
         responses={422: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     )
     app.state.settings = s
-    app.state.repo = InMemoryRepo()  # BE-09 swaps in the Supabase repository
+    app.state.repo = make_repo(s)
     app.state.hub = SessionHub(app.state.repo)  # the hub raises system alerts through the repo
     app.state.session_lock = asyncio.Lock()
     app.state.detect_lock = asyncio.Lock()  # POST /detect shares the startup detector

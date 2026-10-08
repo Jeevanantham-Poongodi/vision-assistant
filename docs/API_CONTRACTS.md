@@ -893,6 +893,13 @@ insert into guardian_links (guardian_id, user_id, relation) values
 - Stored: users, guardian links, sessions, alerts (hazard alerts throttled per section 3.3), location pings (at most one every 10 s per session).
 - Not stored: camera frames, per-frame detections. They stay in memory. Say this in the pitch: it is a privacy point judges like.
 
+**How the backend uses Supabase (BE-09)**
+- Only with `FEATURE_ALERTS_DB=true` and both `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set; otherwise everything stays in memory.
+- Memory is the working copy: every request reads from it, so no request waits on Supabase. Each write goes to memory first and is then sent to Supabase **in order** by one background task (an alert never arrives before its session).
+- At startup the backend loads users, guardian links, **active** sessions and their **open** alerts. After a restart the phone reconnects to the same session and guardians still see open alerts. Ended sessions are not loaded.
+- If Supabase is unreachable, the app keeps working from memory and logs one warning per 30 s with a count of failed writes; **writes made during the outage are not retried**. At startup it falls back to the seed users above.
+- Check the setup with `python -m tools.check_supabase` (from `backend/`).
+
 ---
 
 ## 11. Error model

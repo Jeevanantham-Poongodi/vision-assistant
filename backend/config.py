@@ -89,6 +89,7 @@ class LiveRules(_Frozen):
     silence_timeout_ms: int = 10_000      # no message from the phone for this long -> offline
     guardian_queue_size: int = 32         # outgoing messages buffered per guardian
     guardian_max_drops: int = 3           # a guardian that misses this many in a row is closed
+    location_ping_interval_ms: int = 10_000  # contract 10: at most one stored location per 10 s per session
 
 
 class Thresholds(_Frozen):

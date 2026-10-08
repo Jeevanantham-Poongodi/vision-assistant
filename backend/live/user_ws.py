@@ -68,6 +68,8 @@ async def handle_message(conn: Connection, worker: FrameWorker, hub: SessionHub,
             return
         state.latest_location = location.model_dump(mode="json")
         hub.broadcast(session_id, "location", state.latest_location)  # relayed as received
+        if hub.repo is not None:
+            await hub.repo.insert_location(session_id, state.latest_location)  # stored max once per 10 s
     elif env.type == "status":
         try:
             status = StatusPayload.model_validate(env.payload)

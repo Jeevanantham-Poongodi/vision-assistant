@@ -82,6 +82,7 @@ def test_live_rules():  # contract 5.2 and 6.2 (BE-08)
     assert live.user_status_interval_ms == 2000
     assert live.silence_timeout_ms == 10_000        # no message from the phone -> offline
     assert (live.guardian_queue_size, live.guardian_max_drops) == (32, 3)
+    assert live.location_ping_interval_ms == 10_000  # contract 10: one stored location per 10 s
     assert THRESHOLDS.alerts.offline_alert_throttle_ms == 60_000
 
 
