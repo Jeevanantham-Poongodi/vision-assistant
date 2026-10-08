@@ -161,6 +161,13 @@ These values live in the backend config and are exposed by `GET /api/v1/config` 
 ### 3.3 Hazard alerts to the guardian
 A `hazard` alert is persisted and pushed to guardians only for `critical`/`high` warnings, at most **one per 10 s per cooldown key**, so the guardian feed does not flood.
 
+### 3.4 User online / offline
+- The user is **online** while their socket is connected and they have sent any valid message within the last **10 s**. This is why an idle phone pings every 5 s.
+- **Socket closed:** guardians get `user_status` with `online: false` immediately. If the phone is not back within 10 s, a `system` alert is raised. A reconnect inside that window (the client's backoff is 0.5–4 s) raises nothing. A connection replaced by a newer one (`4002`) never shows as offline, and ending the session through `POST /sessions/{id}/end` raises no alert.
+- **Socket open but silent for more than 10 s:** `online: false` and the same alert. The next message from the phone sets `online: true` again.
+- The alert is `type: "system"`, `risk_level: "high"`, title "User went offline", with the last known location. At most **one per offline period** and **one per 60 s per session**.
+- REST `Session.user_online` follows the same rule.
+
 ---
 
 ## 4. Core data models
@@ -321,9 +328,9 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `location` | `Location` | Every 5 s or on 10 m movement | P1 |
 | `status` | `{ "battery_pct": 64, "fps": 4.8, "camera": "environment" }` | Every 10 s | P1 |
 | `emergency` | `{ "trigger": "button" \| "voice", "note": "optional" }` (the backend attaches the last `location` received on this socket) | On demand | P1 |
-| `ping` | `{}` | Every 15 s if idle | P0 |
+| `ping` | `{}` | Every **5 s** if idle (the backend marks the user offline after 10 s of silence, see 3.4) | P0 |
 
-`location`, `status` and `emergency` are accepted and ignored by the backend until BE-08/BE-10 implement them (no error is sent).
+`location` is validated as a `Location` (4.5), kept as the session's latest position and relayed to guardians. `status` is kept for `user_status` (`battery_pct` must be 0–100 or `null`). An invalid `location` or `status` gets `error` `UNSUPPORTED_MESSAGE`. `emergency` is accepted and ignored by the backend until BE-10 implements it (no error is sent). **Any valid message from the phone counts as a sign of life** (see 3.4).
 
 **Frame rules**
 - JPEG, longest side ≤ 640 px, quality 0.6–0.7 (about 30–50 KB).
@@ -362,7 +369,9 @@ The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every
 ## 6. WebSocket API: guardian channel
 
 **URL:** `wss://<host>/ws/guardian/{session_id}?guardian_id={uuid}`
-Any number of guardian sockets per session.
+Any number of guardian sockets per session. Closes with `4001` if the session is unknown or ended, or `guardian_id` is missing or not linked to the session's user (one code for all three, so a guardian cannot probe for sessions). Closes with `4003` if `FEATURE_GUARDIAN=false`, if no `hello` arrives within 5 s, or if its `guardian_id` differs from the query parameter.
+
+Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `guardian_message` and `ack_alert` are accepted and ignored until BE-11 and BE-10. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
 
 ### 6.1 Client → server
 
@@ -383,7 +392,7 @@ Any number of guardian sockets per session.
 | `alert` | `Alert` | On creation | P1 |
 | `alert_updated` | `Alert` | On ack/resolve | P1 |
 | `location` | `Location` | Relayed as received | P1 |
-| `user_status` | `{ "online": true, "fps": 4.8, "latency_ms": 190, "battery_pct": 64, "last_seen": 1759900530120 }` | Every 2 s, and immediately when online/offline changes | P1 |
+| `user_status` | `{ "online": true, "fps": 4.8, "latency_ms": 190, "battery_pct": 64, "last_seen": 1759900530120 }` | Every 2 s, and immediately when online/offline changes. `fps` and `latency_ms` are measured on the server over the last 5 s (`latency_ms`: receive to result sent, `null` when idle); `battery_pct` comes from the phone's `status` (`null` if unknown) | P1 |
 | `message_delivered` | `{ "message_id": "uuid", "text": "..." }` | After a guardian message is forwarded to the user | P1 |
 | `error` / `pong` | as in section 5 | | P0 |
 

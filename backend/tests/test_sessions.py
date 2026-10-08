@@ -167,7 +167,7 @@ def test_end_closes_sockets_and_drops_pipeline(client):
     sid = start(client).json()["session_id"]
     state = client.app.state.hub.state(UUID(sid))
     user, guardian, broken = FakeSocket(), FakeSocket(), FakeSocket(broken=True)
-    state.user_ws, state.guardian_ws, state.pipeline = user, {guardian, broken}, object()
+    state.user_ws, state.guardians, state.pipeline = user, {guardian, broken}, object()
 
     body = client.post(f"{BASE}/{sid}/end").json()
     assert user.closed_with == 1000

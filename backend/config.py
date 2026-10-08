@@ -79,6 +79,16 @@ class AlertRules(_Frozen):
     """Contract 3.3."""
     hazard_levels: tuple[RiskLevel, ...] = ("critical", "high")
     hazard_throttle_ms: int = 10_000  # per cooldown key
+    offline_alert_throttle_ms: int = 60_000  # system alert "user went offline": max one per minute
+
+
+class LiveRules(_Frozen):
+    """Contract 5.2 and 6.2: guardian relays and user liveness (BE-08)."""
+    relay_interval_ms: int = 500          # snapshot + frame_result to guardians: max 2 per second
+    user_status_interval_ms: int = 2000   # user_status to each guardian
+    silence_timeout_ms: int = 10_000      # no message from the phone for this long -> offline
+    guardian_queue_size: int = 32         # outgoing messages buffered per guardian
+    guardian_max_drops: int = 3           # a guardian that misses this many in a row is closed
 
 
 class Thresholds(_Frozen):
@@ -97,6 +107,7 @@ class Thresholds(_Frozen):
     risk: RiskRules = RiskRules()
     speech: SpeechRules = SpeechRules()
     alerts: AlertRules = AlertRules()
+    live: LiveRules = LiveRules()
 
 
 THRESHOLDS = Thresholds()

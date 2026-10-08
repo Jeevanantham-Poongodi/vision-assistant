@@ -387,3 +387,41 @@ class WsErrorPayload(ContractModel):
     code: ErrorCode
     message: str
     frame_id: int | None = None
+
+
+class StatusPayload(ContractModel):  # 5.2 client -> server "status", every 10 s
+    battery_pct: Annotated[float, Field(ge=0, le=100)] | None = None
+    fps: NonNegative | None = None
+    camera: str | None = None
+
+
+# --- Section 6: guardian WebSocket messages ------------------------------------------------
+
+class GuardianHelloPayload(ContractModel):
+    guardian_id: UUID
+
+
+class GuardianUser(ContractModel):
+    user_id: UUID
+    name: str
+
+
+class GuardianWelcomePayload(ContractModel):
+    session: Session
+    user: GuardianUser
+    open_alerts: list[Alert]
+
+
+class SnapshotPayload(ContractModel):
+    frame_id: Annotated[int, Field(ge=0)]
+    image: str  # base64 JPEG, as the phone sent it
+    width: Annotated[int, Field(gt=0)]
+    height: Annotated[int, Field(gt=0)]
+
+
+class UserStatusPayload(ContractModel):
+    online: bool
+    fps: NonNegative            # measured on the server over the last 5 s
+    latency_ms: int | None      # server receive -> result sent, average over the last 5 s
+    battery_pct: Annotated[float, Field(ge=0, le=100)] | None  # from the phone's "status"
+    last_seen: EpochMs | None   # last message from the phone

@@ -16,7 +16,8 @@ import numpy as np
 from pydantic import ValidationError
 
 from config import THRESHOLDS, Settings
-from live.hub import SessionState
+from live import hub
+from live.hub import SessionState, post_all
 from live.stats import FrameStats
 from schemas import Envelope, ErrorCode, FramePayload, FrameResult
 from vision.pipelines import make_pipeline
@@ -62,6 +63,9 @@ class PendingFrame:
     frame_id: int
     ts: int  # envelope ts: the client's capture time
     jpeg: bytes
+    image_b64: str  # as the phone sent it; relayed to guardians as the snapshot
+    width: int
+    height: int
     received_at: float  # time.perf_counter() on the server (monotonic ticks every ~16 ms on Windows)
 
 
@@ -107,7 +111,8 @@ class FrameWorker:
             task.add_done_callback(self._background.discard)
         if self._pending is not None:
             self.stats.drop("superseded")  # latest frame wins
-        self._pending = PendingFrame(frame.frame_id, env.ts, jpeg, received_at)
+        self._pending = PendingFrame(frame.frame_id, env.ts, jpeg, frame.image, frame.width, frame.height,
+                                     received_at)
         self._wakeup.set()
 
     def _save_debug_frame(self, frame_id: int, jpeg: bytes) -> None:
@@ -163,8 +168,21 @@ class FrameWorker:
             return
         await self.send("frame_result", payload)
         self.state.latest_jpeg, self.state.latest_result, self.state.latest_at_ms = frame.jpeg, payload, now_ms()
-        total_ms = (time.perf_counter() - frame.received_at) * 1000
+        now = time.perf_counter()
+        total_ms = (now - frame.received_at) * 1000
         self.stats.record(frame.frame_id, decode_ms, pipeline_ms, total_ms)
+        self._relay(frame, payload, now, total_ms)
+
+    def _relay(self, frame: PendingFrame, result: dict, now: float, total_ms: float) -> None:
+        """Guardians get the frame and its result, at most 2 per second (contract 6.2)."""
+        state = self.state
+        state.recent_results.append((now, total_ms))
+        if not state.guardians or now - state.last_relay_at < hub.RELAY_INTERVAL_S:
+            return
+        state.last_relay_at = now
+        post_all(state, "snapshot", {"frame_id": frame.frame_id, "image": frame.image_b64,
+                                     "width": frame.width, "height": frame.height})
+        post_all(state, "frame_result", result)
 
     async def _get_pipeline(self) -> Any:
         """Creates the session's pipeline on first use (caller holds pipeline_lock)."""

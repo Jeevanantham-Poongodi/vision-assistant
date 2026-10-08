@@ -76,6 +76,15 @@ def test_frame_rules():
     assert f.hello_timeout_ms == 5000
 
 
+def test_live_rules():  # contract 5.2 and 6.2 (BE-08)
+    live = THRESHOLDS.live
+    assert live.relay_interval_ms == 500            # snapshot + frame_result: max 2 per second
+    assert live.user_status_interval_ms == 2000
+    assert live.silence_timeout_ms == 10_000        # no message from the phone -> offline
+    assert (live.guardian_queue_size, live.guardian_max_drops) == (32, 3)
+    assert THRESHOLDS.alerts.offline_alert_throttle_ms == 60_000
+
+
 def test_websocket_close_codes():  # contract 5.4
     assert WS_CLOSE == {"normal": 1000, "session_not_found": 4001, "replaced": 4002, "protocol": 4003}
 

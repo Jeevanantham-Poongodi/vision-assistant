@@ -7,18 +7,28 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from config import THRESHOLDS, WS_CLOSE
 from live.frame_worker import FrameWorker, now_ms
-from schemas import Envelope, ErrorCode, HelloPayload, WelcomeConfig, WelcomePayload, WsErrorPayload
+from live.hub import SessionHub
+from schemas import (
+    Envelope,
+    ErrorCode,
+    HelloPayload,
+    Location,
+    StatusPayload,
+    WelcomeConfig,
+    WelcomePayload,
+    WsErrorPayload,
+)
 
 log = logging.getLogger("vision_assistant")
 router = APIRouter()
 
 HELLO_TIMEOUT_S = THRESHOLDS.frame.hello_timeout_ms / 1000
-# Valid contract 5.2 types whose handling arrives later (BE-08, BE-10); accepted silently until then.
-NOT_YET_HANDLED = {"hello", "location", "status", "emergency"}
+# Valid contract 5.2 types whose handling arrives later (BE-10 for emergency); accepted silently until then.
+NOT_YET_HANDLED = {"hello", "emergency"}
 
 
 class Connection:
@@ -37,16 +47,34 @@ class Connection:
         await self.send("error", payload.model_dump(mode="json"))
 
 
-async def handle_message(conn: Connection, worker: FrameWorker, text: str) -> None:
+async def handle_message(conn: Connection, worker: FrameWorker, hub: SessionHub, session_id: UUID,
+                         text: str) -> None:
     try:
         env = Envelope.model_validate_json(text)
     except ValidationError:
         await conn.send_error("UNSUPPORTED_MESSAGE", "Message is not a valid envelope {v, type, ts, payload}.")
         return
+    hub.mark_seen(session_id)  # any valid message is a sign of life (BE-08 offline detection)
+    state = hub.state(session_id)
     if env.type == "frame":
         await worker.submit(env)
     elif env.type == "ping":
         await conn.send("pong", {})
+    elif env.type == "location":
+        try:
+            location = Location.model_validate(env.payload)
+        except ValidationError:
+            await conn.send_error("UNSUPPORTED_MESSAGE", "location needs lat, lng and ts (contract 4.5).")
+            return
+        state.latest_location = location.model_dump(mode="json")
+        hub.broadcast(session_id, "location", state.latest_location)  # relayed as received
+    elif env.type == "status":
+        try:
+            status = StatusPayload.model_validate(env.payload)
+        except ValidationError:
+            await conn.send_error("UNSUPPORTED_MESSAGE", "status needs battery_pct (0-100 or null), fps, camera.")
+            return
+        state.client_status = status.model_dump(mode="json")
     elif env.type not in NOT_YET_HANDLED:
         await conn.send_error("UNSUPPORTED_MESSAGE", f"Unknown message type '{env.type}'.")
 
@@ -59,12 +87,13 @@ async def receive_text(ws: WebSocket) -> str | None:
     return message.get("text")
 
 
-async def wait_for_hello(ws: WebSocket) -> tuple[Envelope, HelloPayload] | None:
-    """The first message must be hello within 5 s; anything else returns None."""
+async def wait_for_hello(ws: WebSocket, model: type[BaseModel] = HelloPayload) -> tuple[Envelope, Any] | None:
+    """The first message must be hello within 5 s (HELLO_TIMEOUT_S); anything else returns None.
+    The guardian socket reuses this with its own payload model."""
     try:
         text = await asyncio.wait_for(receive_text(ws), HELLO_TIMEOUT_S)
         env = Envelope.model_validate_json(text or "")
-        return (env, HelloPayload.model_validate(env.payload)) if env.type == "hello" else None
+        return (env, model.model_validate(env.payload)) if env.type == "hello" else None
     except (TimeoutError, ValidationError):
         return None
 
@@ -86,7 +115,8 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
         await ws.close(code=WS_CLOSE["protocol"], reason="Expected hello with this session's user_id")
         return
 
-    state = ws.app.state.hub.state(session_id)
+    hub: SessionHub = ws.app.state.hub
+    state = hub.state(session_id)
     old, state.user_ws = state.user_ws, ws
     if old is not None:
         try:
@@ -100,15 +130,17 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
     f = THRESHOLDS.frame
     welcome = WelcomePayload(session_id=session_id, config=WelcomeConfig(
         target_fps=f.target_fps, max_width=f.max_width, jpeg_quality=f.jpeg_quality))
+    watchdog = asyncio.create_task(hub.watch_silence(session_id, ws))
     try:
         await conn.send("welcome", welcome.model_dump(mode="json"))
+        hub.user_connected(session_id)  # guardians see the user come online
         while True:
             text = await receive_text(ws)
             try:
                 if text is None:
                     await conn.send_error("UNSUPPORTED_MESSAGE", "Binary messages are not supported; send JSON text.")
                 else:
-                    await handle_message(conn, worker, text)
+                    await handle_message(conn, worker, hub, session_id, text)
             except WebSocketDisconnect:
                 raise
             except Exception:
@@ -117,6 +149,8 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        watchdog.cancel()
         await worker.close()
-        if state.user_ws is ws:  # a replaced connection must not mark the new one offline
-            state.user_ws = None
+        # Offline for guardians right away; the system alert only if the phone stays gone. Does
+        # nothing for a replaced connection (it must not mark the new one offline) or an ended session.
+        hub.user_disconnected(session_id, ws)

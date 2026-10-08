@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
 from db.repo import InMemoryRepo
 from errors import install_error_handlers
-from live import user_ws
+from live import guardian_ws, user_ws
 from live.hub import SessionHub
 from routers import detect, sessions
 from schemas import (
@@ -123,7 +123,7 @@ def create_app(s: Settings = settings) -> FastAPI:
     )
     app.state.settings = s
     app.state.repo = InMemoryRepo()  # BE-09 swaps in the Supabase repository
-    app.state.hub = SessionHub()
+    app.state.hub = SessionHub(app.state.repo)  # the hub raises system alerts through the repo
     app.state.session_lock = asyncio.Lock()
     app.state.detect_lock = asyncio.Lock()  # POST /detect shares the startup detector
     install_error_handlers(app)  # before CORS, so CORS also wraps 500 responses
@@ -138,6 +138,7 @@ def create_app(s: Settings = settings) -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(detect.router)
     app.include_router(user_ws.router)
+    app.include_router(guardian_ws.router)
     return app
 
 
