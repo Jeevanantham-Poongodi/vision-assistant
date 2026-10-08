@@ -63,7 +63,7 @@ class WarningSelector:
     @staticmethod
     def _build_text(detection: dict, risk_level: str) -> tuple[str, str]:
         try:
-            from speech import build_short_text, build_warning_message
+            from speech.phrases import build_short_text, build_warning_message
         except ModuleNotFoundError as error:
             if error.name != "speech.phrases":
                 raise
