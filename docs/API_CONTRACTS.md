@@ -579,7 +579,7 @@ backend/
 ├── main.py                  # C3: app, routers, startup (loads models once)
 ├── config.py                # C3: settings + thresholds (section 3)
 ├── schemas.py               # C3: Pydantic models = section 4
-├── realtime/
+├── live/
 │   ├── hub.py               # C3: session hub, user + guardian sockets
 │   ├── user_ws.py           # C3
 │   └── guardian_ws.py       # C3
@@ -678,7 +678,7 @@ async def interpret_ocr(ocr_text: str, image_jpeg: bytes | None, timeout_s: floa
 ```
 
 ### 8.4 Rules for every internal module
-- No module except `db/` touches Supabase. No module except `realtime/` touches sockets.
+- No module except `db/` touches Supabase. No module except `live/` touches sockets.
 - Vision and OCR functions are **synchronous**. Coder 3 runs them with `await asyncio.to_thread(...)` so the event loop never blocks.
 - Models load **once** at startup (FastAPI lifespan), never per request.
 - Every module ships a `if __name__ == "__main__":` demo that runs on a webcam or a sample image without FastAPI.

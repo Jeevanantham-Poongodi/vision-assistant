@@ -5,4 +5,4 @@ pydantic-settings
 python-multipart
 supabase
 pytest
-httpx
+httpx2  # FastAPI TestClient; plain httpx is deprecated there (supabase still pulls httpx in itself)
