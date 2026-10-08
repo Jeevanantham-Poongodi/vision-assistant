@@ -1,0 +1,23 @@
+name: ci
+on:
+  pull_request:
+    branches: [integration, main]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && pytest -q -m "not slow"
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Build (skipped until Coder 1 adds package.json)
+        run: |
+          if [ -f frontend/package.json ]; then cd frontend && npm ci && npm run build; else echo "no frontend yet"; fi

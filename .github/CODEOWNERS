@@ -1,0 +1,14 @@
+# Replace each @handle with the teammate's real GitHub username.
+/docs/                           @Jeevanantham-Poongodi
+/backend/                        @Jeevanantham-Poongodi
+/backend/vision/                 @spaces111333
+/backend/safety/                 @spaces111333
+/backend/speech/                 @Dhakshan2004
+/backend/ocr/                    @Dhakshan2004
+/backend/ai/                     @Dhakshan2004
+/backend/navigation/             @Dhakshan2004
+/backend/requirements/vision.txt @spaces111333
+/backend/requirements/integrations.txt @Dhakshan2004
+/frontend/                       @madhishvacodespace
+/frontend/src/services/speech.ts @Dhakshan2004
+/frontend/src/features/voice/    @Dhakshan2004

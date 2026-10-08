@@ -1,0 +1,4 @@
+# Owner: Coder 4. Tesseract itself is a system install (apt / installer), not pip.
+pytesseract
+google-genai
+pyttsx3
