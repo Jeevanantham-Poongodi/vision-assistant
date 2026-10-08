@@ -26,7 +26,7 @@ After every checkpoint: `git merge origin/main` into your own branch.
 cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env  # (or) copy .env.example .env
 uvicorn main:app --reload --port 8000                # http://localhost:8000/docs
 
 # frontend (Node 20) — Coder 1 scaffolds it in Phase 0
@@ -38,5 +38,14 @@ cd frontend && npm ci && npm run dev -- --host
 ### Coder 1 — Frontend
 ### Coder 2 — AI Vision
 ### Coder 3 — Backend
+**Demo day checklist** (full guide: [docs/07_HTTPS_DEMO.md](docs/07_HTTPS_DEMO.md)):
+1. Pull `integration`; set this checkpoint's flags in `backend/.env` and `frontend/.env`.
+2. Start the backend: `uvicorn main:app --host 0.0.0.0 --port 8000`. Check that `/api/v1/health` says `ok`.
+3. Start the tunnels: `python -m tools.tunnels --write-env` (from `backend/`; leave it running).
+4. Start Vite: `npm run dev -- --host`. Start it after step 3, so it reads the new `frontend/.env`.
+5. Check `wss://`: `python -m tools.wss_check --base <backend tunnel URL>` should print `PASS`.
+6. On the phone, with **Wi-Fi off**, open the frontend tunnel URL and allow the camera.
+7. Calibrate the camera: `DEBUG_SAVE_FRAMES=1`, then Coder 2's calibration script (roadmap §9.2), then set `CAMERA_FOCAL_PX`.
+8. If tunnels don't work: use the laptop hotspot + `mkcert` fallback (guide §3).
 ### Coder 4 — Integrations
 ### Member 5 — QA

@@ -43,7 +43,7 @@ This file is the single source of truth that lets all five of us work in paralle
 | CORS | Backend allows the Vite dev origin and the tunnel origin |
 | Supabase access | **Backend only.** The frontend never talks to Supabase directly; the service-role key stays on the server |
 
-> **HTTPS note.** Browsers only allow camera and microphone access (`getUserMedia`, Web Speech) in a secure context. `localhost` counts as secure. A phone on your Wi-Fi hitting `http://192.168.x.x` does **not**. For the phone demo, put both frontend and backend behind HTTPS (a `cloudflared`/`ngrok` tunnel, or `mkcert` + `vite --https`). WebSockets then use `wss://`.
+> **HTTPS note.** Browsers only allow camera and microphone access (`getUserMedia`, Web Speech) in a secure context. `localhost` counts as secure. A phone on your Wi-Fi hitting `http://192.168.x.x` does **not**. For the phone demo, put both frontend and backend behind HTTPS (a `cloudflared`/`ngrok` tunnel, or `mkcert` + `vite --https`). WebSockets then use `wss://`. `python -m tools.tunnels` starts both Cloudflare tunnels and prints the frontend `.env` values; set `ALLOWED_ORIGIN_REGEX` so new tunnel URLs pass CORS. Guide: `docs/07_HTTPS_DEMO.md`.
 
 ---
 
@@ -796,6 +796,7 @@ CAMERA_FOCAL_PX=              # from Coder 2's calibration script
 TESSERACT_CMD=/usr/bin/tesseract
 MAPBOX_TOKEN=                 # P2
 ALLOWED_ORIGINS=http://localhost:5173,https://<tunnel>
+ALLOWED_ORIGIN_REGEX=              # demo only: ^https://[a-z0-9-]+\.trycloudflare\.com$
 ```
 
 ---

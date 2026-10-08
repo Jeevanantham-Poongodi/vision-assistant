@@ -140,3 +140,24 @@ def test_routes_use_api_prefix(make_client):
     assert client.get("/docs").status_code == 200
     paths = client.get("/openapi.json").json()["paths"]
     assert {"/api/v1/health", "/api/v1/config"} <= set(paths)
+
+
+TUNNEL_REGEX = r"^https://[a-z0-9-]+\.trycloudflare\.com$"
+
+
+@pytest.mark.parametrize("origin, allowed", [
+    ("https://brave-otter-words.trycloudflare.com", True),
+    ("http://localhost:5173", True),                       # ALLOWED_ORIGINS still works
+    ("https://evil.example", False),
+    ("http://brave-otter-words.trycloudflare.com", False),  # https only
+    ("https://x.trycloudflare.com.evil.example", False),
+])
+def test_cors_origin_regex_for_tunnels(make_client, origin, allowed):
+    client = make_client(allowed_origin_regex=TUNNEL_REGEX)
+    r = client.get("/api/v1/health", headers={"Origin": origin})
+    assert (r.headers.get("access-control-allow-origin") == origin) is allowed
+
+
+def test_cors_regex_off_by_default(make_client):
+    r = make_client().get("/api/v1/health", headers={"Origin": "https://brave-otter-words.trycloudflare.com"})
+    assert "access-control-allow-origin" not in r.headers

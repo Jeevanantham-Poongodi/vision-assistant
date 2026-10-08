@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     # Coder 3: backend
     pipeline: Literal["stub", "real"] = "stub"
     allowed_origins: str = "http://localhost:5173"
+    # Demo only: e.g. ^https://[a-z0-9-]+\.trycloudflare\.com$ so a new tunnel URL needs no restart.
+    # It lets any trycloudflare.com page call the API from a browser; leave empty outside the demo.
+    allowed_origin_regex: str = ""
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     feature_guardian: bool = False
