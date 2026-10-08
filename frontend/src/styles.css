@@ -1,0 +1,282 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #f3f6f8;
+  background: #0b1014;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 50% 0, rgb(20 91 83 / 18%), transparent 48%),
+    #0b1014;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  width: min(1120px, calc(100% - 48px));
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #202b30;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #4bd3aa;
+  border-radius: 11px;
+  color: #73e6c2;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.main-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.main-nav a {
+  padding: 9px 13px;
+  border-radius: 8px;
+  color: #a9b7bc;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.main-nav a:hover,
+.main-nav a:focus-visible {
+  background: #172126;
+  color: #f3f6f8;
+}
+
+main {
+  flex: 1;
+}
+
+.hero {
+  max-width: 760px;
+  padding: 92px 0 52px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #75dcb9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 700px;
+  margin-bottom: 18px;
+  font-size: clamp(38px, 6vw, 64px);
+  font-weight: 620;
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+}
+
+.hero-copy {
+  margin-bottom: 0;
+  color: #aab7bb;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 18px;
+  padding-bottom: 60px;
+}
+
+.panel {
+  min-height: 252px;
+  padding: 28px;
+  border: 1px solid #263338;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #151e22, #10171a);
+}
+
+.primary-panel {
+  background:
+    radial-gradient(ellipse at 100% 0, rgb(43 145 113 / 13%), transparent 42%),
+    #121a1e;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 38px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5b659;
+  box-shadow: 0 0 14px rgb(229 182 89 / 40%);
+}
+
+.panel h2 {
+  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.panel p:not(.eyebrow) {
+  max-width: 560px;
+  margin-bottom: 22px;
+  color: #aab7bb;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.status-message,
+.empty-state {
+  display: flex;
+  align-items: center;
+  min-height: 43px;
+  padding: 0 14px;
+  border: 1px solid #343e41;
+  border-radius: 9px;
+  background: #0d1417;
+  color: #d7dfe1;
+  font-size: 13px;
+}
+
+.support-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.support-panel .eyebrow {
+  margin-bottom: 27px;
+}
+
+.support-panel h2 {
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.text-link {
+  margin-top: auto;
+  color: #78e0bd;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.text-link:hover,
+.text-link:focus-visible {
+  color: #b2f3de;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.site-footer {
+  display: flex;
+  gap: 9px;
+  padding: 22px 0;
+  border-top: 1px solid #202b30;
+  color: #849398;
+  font-size: 12px;
+}
+
+:focus-visible {
+  outline: 2px solid #78e0bd;
+  outline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    width: min(100% - 32px, 520px);
+  }
+
+  .topbar {
+    min-height: 66px;
+  }
+
+  .brand {
+    gap: 9px;
+    font-size: 13px;
+  }
+
+  .main-nav {
+    gap: 0;
+  }
+
+  .main-nav a {
+    padding: 8px 9px;
+    font-size: 12px;
+  }
+
+  .hero {
+    padding: 72px 0 38px;
+  }
+
+  .hero-copy {
+    font-size: 15px;
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding-bottom: 40px;
+  }
+
+  .panel {
+    min-height: 225px;
+    padding: 22px;
+  }
+
+  .panel-heading {
+    margin-bottom: 30px;
+  }
+}
