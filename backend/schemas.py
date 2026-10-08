@@ -425,3 +425,21 @@ class UserStatusPayload(ContractModel):
     latency_ms: int | None      # server receive -> result sent, average over the last 5 s
     battery_pct: Annotated[float, Field(ge=0, le=100)] | None  # from the phone's "status"
     last_seen: EpochMs | None   # last message from the phone
+
+
+# --- Emergencies and acknowledgements (BE-10) ----------------------------------------------
+
+class EmergencyPayload(ContractModel):  # 5.2 client -> server "emergency"
+    trigger: EmergencyTrigger
+    note: Annotated[str, Field(max_length=200)] | None = None
+
+
+class EmergencyAckPayload(ContractModel):  # 5.3 server -> client "emergency_ack"
+    alert_id: UUID
+    status: Literal["open", "acknowledged"]
+    spoken_text: str
+
+
+class AckAlertPayload(ContractModel):  # 6.1 guardian -> server "ack_alert"
+    alert_id: UUID
+    status: Literal["acknowledged", "resolved"]

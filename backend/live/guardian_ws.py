@@ -1,7 +1,7 @@
 # backend/live/guardian_ws.py
 """Guardian WebSocket, contract section 6 (BE-08). Owner: Coder 3.
-Read-only live view for now: welcome, snapshots, results, location, user_status and alerts.
-guardian_message (BE-11) and ack_alert (BE-10) are accepted and ignored until those stories land."""
+Live view (welcome, snapshots, results, location, user_status, alerts) and ack_alert (BE-10).
+guardian_message is accepted and ignored until BE-11."""
 import asyncio
 import logging
 from typing import Any
@@ -11,11 +11,14 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from config import WS_CLOSE
+from errors import AppError
+from live import alerts
 from live import hub as hub_module
 from live.hub import GuardianConnection, SessionHub, to_alert
 from live.user_ws import receive_text, wait_for_hello
 from routers.sessions import to_session
 from schemas import (
+    AckAlertPayload,
     Envelope,
     ErrorCode,
     GuardianHelloPayload,
@@ -28,7 +31,7 @@ log = logging.getLogger("vision_assistant")
 router = APIRouter()
 
 # Valid contract 6.1 types handled by later stories; accepted silently until then.
-NOT_YET_HANDLED = {"hello", "guardian_message", "ack_alert"}
+NOT_YET_HANDLED = {"hello", "guardian_message"}
 
 
 def post_error(conn: GuardianConnection, code: ErrorCode, message: str) -> None:
@@ -42,7 +45,7 @@ async def status_ticker(hub: SessionHub, session_id: UUID, conn: GuardianConnect
         conn.post("user_status", hub.user_status(session_id))
 
 
-def handle_message(conn: GuardianConnection, text: str | None) -> None:
+async def handle_message(conn: GuardianConnection, hub: SessionHub, text: str | None) -> None:
     if text is None:
         post_error(conn, "UNSUPPORTED_MESSAGE", "Binary messages are not supported; send JSON text.")
         return
@@ -53,6 +56,16 @@ def handle_message(conn: GuardianConnection, text: str | None) -> None:
         return
     if env.type == "ping":
         conn.post("pong", {})
+    elif env.type == "ack_alert":
+        try:
+            ack = AckAlertPayload.model_validate(env.payload)
+        except ValidationError:
+            post_error(conn, "UNSUPPORTED_MESSAGE", 'ack_alert needs alert_id and status "acknowledged" or "resolved".')
+            return
+        try:  # success is visible as alert_updated, which this guardian receives too
+            await alerts.update_alert(hub, ack.alert_id, ack.status, conn.guardian_id)
+        except AppError as exc:
+            post_error(conn, exc.code, exc.message)
     elif env.type not in NOT_YET_HANDLED:
         post_error(conn, "UNSUPPORTED_MESSAGE", f"Unknown message type '{env.type}'.")
 
@@ -111,7 +124,7 @@ async def guardian_socket(ws: WebSocket, session_id: UUID) -> None:
         if state.latest_location is not None:  # a refreshed guardian page is not left empty
             conn.post("location", state.latest_location)
         while True:
-            handle_message(conn, await receive_text(ws))
+            await handle_message(conn, hub, await receive_text(ws))
     except WebSocketDisconnect:
         pass
     except Exception:

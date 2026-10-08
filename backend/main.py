@@ -16,7 +16,7 @@ from db.repo import InMemoryRepo, SupabaseRepo
 from errors import install_error_handlers
 from live import guardian_ws, user_ws
 from live.hub import SessionHub
-from routers import detect, sessions
+from routers import alerts, detect, sessions
 from schemas import (
     ConfigResponse,
     DetectorConfig,
@@ -152,6 +152,7 @@ def create_app(s: Settings = settings) -> FastAPI:
     app.include_router(router)
     app.include_router(sessions.router)
     app.include_router(detect.router)
+    app.include_router(alerts.router)
     app.include_router(user_ws.router)
     app.include_router(guardian_ws.router)
     return app

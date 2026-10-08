@@ -364,8 +364,7 @@ def test_offline_alerts_are_throttled(client):
 def test_guardian_ping_and_ignored_messages(client):
     sid = new_session(client)
     with guardian(client, sid) as g:
-        for type_, payload in (("guardian_message", {"text": "Stop"}), ("ack_alert", {"alert_id": UNKNOWN, "status": "acknowledged"})):
-            g.send_json(env(type_, payload))
+        g.send_json(env("guardian_message", {"text": "Stop"}))  # BE-11; ack_alert is tested in test_alerts.py
         assert [m for m in pong_barrier(g) if m["type"] == "error"] == []
 
 

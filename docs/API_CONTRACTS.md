@@ -159,7 +159,7 @@ These values live in the backend config and are exposed by `GET /api/v1/config` 
 | Path clear | `path_clear = true` when no object with `distance_m < 3.0` is in the walking corridor |
 
 ### 3.3 Hazard alerts to the guardian
-A `hazard` alert is persisted and pushed to guardians only for `critical`/`high` warnings, at most **one per 10 s per cooldown key**, so the guardian feed does not flood.
+A `hazard` alert is persisted and pushed to guardians only for `critical`/`high` warnings, at most **one per 10 s per cooldown key**, so the guardian feed does not flood. Content: `title` = the warning's `short_text`, `message` = the spoken sentence, `risk_level` = the warning's level, `location` = the last known location, and the stored `payload` holds the triggering `Detection`, the `Warning` and the `frame_id`. With `PIPELINE=stub` the mock car warning (`high`) raises one hazard alert per 10 s while frames stream.
 
 ### 3.4 User online / offline
 - The user is **online** while their socket is connected and they have sent any valid message within the last **10 s**. This is why an idle phone pings every 5 s.
@@ -289,7 +289,7 @@ Pixel coordinates in the submitted frame. `x1 < x2`, `y1 < y2`.
   "acknowledged_at": null
 }
 ```
-`snapshot_b64` is a small JPEG (max 320 px wide) of the frame at alert time, if one is available. It is sent over WebSocket only and is not stored in the database.
+`snapshot_b64` is a small JPEG (max 320 px wide) of the frame at alert time, if one is available. It is sent over WebSocket only and is not stored in the database (REST responses carry `null`). It comes from Coder 2's `make_thumbnail` (CV-11, boxes drawn); until that exists, the backend sends the plain frame scaled to 320 px.
 
 ### 4.7 `Session`
 ```json
@@ -330,7 +330,7 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `emergency` | `{ "trigger": "button" \| "voice", "note": "optional" }` (the backend attaches the last `location` received on this socket) | On demand | P1 |
 | `ping` | `{}` | Every **5 s** if idle (the backend marks the user offline after 10 s of silence, see 3.4) | P0 |
 
-`location` is validated as a `Location` (4.5), kept as the session's latest position and relayed to guardians. `status` is kept for `user_status` (`battery_pct` must be 0–100 or `null`). An invalid `location` or `status` gets `error` `UNSUPPORTED_MESSAGE`. `emergency` is accepted and ignored by the backend until BE-10 implements it (no error is sent). **Any valid message from the phone counts as a sign of life** (see 3.4).
+`location` is validated as a `Location` (4.5), kept as the session's latest position and relayed to guardians. `status` is kept for `user_status` (`battery_pct` must be 0–100 or `null`). An invalid `location` or `status` gets `error` `UNSUPPORTED_MESSAGE`. `emergency` creates an `emergency` alert (see 7.11) and is answered with `emergency_ack`; an invalid `trigger` gets `error` `UNSUPPORTED_MESSAGE`. **Any valid message from the phone counts as a sign of life** (see 3.4).
 
 **Frame rules**
 - JPEG, longest side ≤ 640 px, quality 0.6–0.7 (about 30–50 KB).
@@ -371,7 +371,7 @@ The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every
 **URL:** `wss://<host>/ws/guardian/{session_id}?guardian_id={uuid}`
 Any number of guardian sockets per session. Closes with `4001` if the session is unknown or ended, or `guardian_id` is missing or not linked to the session's user (one code for all three, so a guardian cannot probe for sessions). Closes with `4003` if `FEATURE_GUARDIAN=false`, if no `hello` arrives within 5 s, or if its `guardian_id` differs from the query parameter.
 
-Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `guardian_message` and `ack_alert` are accepted and ignored until BE-11 and BE-10. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
+Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `ack_alert` follows the same rules as `PATCH /alerts/{alert_id}` (7.13); success shows up as `alert_updated`, failures as `error` (`ALERT_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, or `UNSUPPORTED_MESSAGE` for a bad payload). `guardian_message` is accepted and ignored until BE-11. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
 
 ### 6.1 Client → server
 
@@ -532,7 +532,7 @@ If the user already has an `active` session, that session is returned with **200
 ```json
 { "session_id": "uuid", "trigger": "button", "location": { "lat": 11.0168, "lng": 76.9558, "accuracy_m": 12.0 }, "note": null }
 ```
-**201** → `Alert` with `type: "emergency"`, `risk_level: "critical"`. The backend also pushes `alert` to every guardian socket and `emergency_ack` to the user socket.
+**201** → `Alert` with `type: "emergency"`, `risk_level: "critical"`. The backend also pushes `alert` to every guardian socket and `emergency_ack` to the user socket. The location is the request's, or else the last one the phone sent. **404** `SESSION_NOT_FOUND` for an unknown or ended session. **Repeated presses:** while an emergency is `open`, another one within 10 s (REST or WebSocket) returns that same alert and re-sends its `emergency_ack` instead of creating a duplicate.
 
 ### 7.12 `GET /alerts`
 Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200), `before` (ISO time, for paging)
@@ -541,7 +541,7 @@ Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200),
 ### 7.13 `PATCH /alerts/{alert_id}`
 **Request** `{ "status": "acknowledged", "guardian_id": "22222222-2222-2222-2222-222222222222" }`
 **200** → `Alert`. Pushes `alert_updated` to guardians and, for emergencies, `emergency_ack` to the user.
-**404** `ALERT_NOT_FOUND` · **409** `INVALID_STATUS_TRANSITION` (allowed: `open → acknowledged → resolved`, or `open → resolved`)
+**404** `ALERT_NOT_FOUND` (also when `guardian_id` is not linked to the alert's user, so alerts cannot be probed) · **409** `INVALID_STATUS_TRANSITION` (allowed: `open → acknowledged → resolved`, or `open → resolved`). The first acknowledgement records `acknowledged_by` and `acknowledged_at`. `emergency_ack` (`status: "acknowledged"`, "Your guardian has seen your emergency and is responding.") is sent once, when an emergency leaves `open`.
 
 ### 7.14 `POST /sessions/{session_id}/guardian-message`
 **Request** `{ "guardian_id": "uuid", "text": "Stop and wait." }`

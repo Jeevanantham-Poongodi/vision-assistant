@@ -101,6 +101,11 @@ class SessionState:
     client_status: dict[str, Any] = field(default_factory=dict)  # last "status" from the phone
     last_relay_at: float = 0.0  # time.perf_counter() of the last snapshot relay
     recent_results: deque = field(default_factory=lambda: deque(maxlen=100))  # (perf_counter, total_ms)
+    # The phone's live connection (user_ws.Connection): sends go through its lock (BE-10).
+    user_conn: Any = None
+    # Alerts (BE-10).
+    hazard_last: dict[str, float] = field(default_factory=dict)  # cooldown key -> time.monotonic()
+    last_emergency: tuple[UUID, float] | None = None              # (alert_id, time.monotonic())
     # Presence.
     last_seen_ms: int | None = None
     silent: bool = False
@@ -145,6 +150,20 @@ class SessionHub:
         s = self._sessions.get(session_id)
         if s is not None:
             post_all(s, type_, payload)
+
+    async def send_to_user(self, session_id: UUID, type_: str, payload: dict[str, Any]) -> bool:
+        """Sends to the phone through its connection's lock; False if it is offline or the send fails."""
+        s = self._sessions.get(session_id)
+        conn = s.user_conn if s is not None else None
+        if conn is None:
+            log.info("Session %s: phone offline, %s not delivered", session_id, type_)
+            return False
+        try:
+            await conn.send(type_, payload)
+            return True
+        except Exception:
+            log.debug("Session %s: could not send %s to the phone", session_id, type_, exc_info=True)
+            return False
 
     def user_status(self, session_id: UUID) -> dict[str, Any]:
         s = self.state(session_id)

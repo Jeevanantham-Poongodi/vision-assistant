@@ -199,7 +199,7 @@ def test_unsupported_messages(client, send):
         assert_still_open(ws)
 
 
-@pytest.mark.parametrize("type_", ["emergency", "hello"])  # location and status are handled since BE-08
+@pytest.mark.parametrize("type_", ["hello"])  # location/status since BE-08, emergency since BE-10
 def test_later_message_types_are_accepted_silently(client, type_):
     with connected(client, new_session(client)) as ws:
         ws.send_json(env(type_, {"user_id": USER}))

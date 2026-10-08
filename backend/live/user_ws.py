@@ -10,9 +10,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
 from config import THRESHOLDS, WS_CLOSE
+from errors import AppError
+from live import alerts
 from live.frame_worker import FrameWorker, now_ms
 from live.hub import SessionHub
 from schemas import (
+    EmergencyPayload,
     Envelope,
     ErrorCode,
     HelloPayload,
@@ -27,8 +30,8 @@ log = logging.getLogger("vision_assistant")
 router = APIRouter()
 
 HELLO_TIMEOUT_S = THRESHOLDS.frame.hello_timeout_ms / 1000
-# Valid contract 5.2 types whose handling arrives later (BE-10 for emergency); accepted silently until then.
-NOT_YET_HANDLED = {"hello", "emergency"}
+# A repeated hello is accepted silently.
+NOT_YET_HANDLED = {"hello"}
 
 
 class Connection:
@@ -77,6 +80,16 @@ async def handle_message(conn: Connection, worker: FrameWorker, hub: SessionHub,
             await conn.send_error("UNSUPPORTED_MESSAGE", "status needs battery_pct (0-100 or null), fps, camera.")
             return
         state.client_status = status.model_dump(mode="json")
+    elif env.type == "emergency":
+        try:
+            emergency = EmergencyPayload.model_validate(env.payload)
+        except ValidationError:
+            await conn.send_error("UNSUPPORTED_MESSAGE", 'emergency needs trigger "button" or "voice".')
+            return
+        try:  # alert to guardians + emergency_ack back to this phone (contract 5.3)
+            await alerts.trigger_emergency(hub, session_id, emergency.trigger, note=emergency.note)
+        except AppError as exc:
+            await conn.send_error(exc.code, exc.message)
     elif env.type not in NOT_YET_HANDLED:
         await conn.send_error("UNSUPPORTED_MESSAGE", f"Unknown message type '{env.type}'.")
 
@@ -127,8 +140,9 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
             log.debug("Old user socket for %s was already closed", session_id, exc_info=True)
 
     conn = Connection(ws)
+    state.user_conn = conn  # emergency_ack from REST or a guardian goes through this lock
     worker = FrameWorker(session_id, state, ws.app.state.settings, conn.send, conn.send_error,
-                         hello_ts=hello[0].ts)
+                         hello_ts=hello[0].ts, hub_=hub)
     f = THRESHOLDS.frame
     welcome = WelcomePayload(session_id=session_id, config=WelcomeConfig(
         target_fps=f.target_fps, max_width=f.max_width, jpeg_quality=f.jpeg_quality))
@@ -153,6 +167,8 @@ async def user_socket(ws: WebSocket, session_id: UUID) -> None:
     finally:
         watchdog.cancel()
         await worker.close()
+        if state.user_conn is conn:
+            state.user_conn = None
         # Offline for guardians right away; the system alert only if the phone stays gone. Does
         # nothing for a replaced connection (it must not mark the new one offline) or an ended session.
         hub.user_disconnected(session_id, ws)

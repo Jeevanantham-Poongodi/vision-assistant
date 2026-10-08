@@ -103,12 +103,20 @@ class InMemoryRepo:
         self._alerts[row["id"]] = row
         return row
 
-    async def list_alerts(self, session_id: UUID | None = None, status: str | None = None) -> list[Row]:
+    async def list_alerts(self, session_id: UUID | None = None, status: str | None = None, *,
+                          user_id: UUID | None = None, type: str | None = None,
+                          before: datetime | None = None, limit: int | None = None) -> list[Row]:
+        """Newest first. before (exclusive) pages backwards: pass the last item's created_at."""
         rows = [
             a for a in self._alerts.values()
-            if (session_id is None or a["session_id"] == session_id) and (status is None or a["status"] == status)
+            if (session_id is None or a["session_id"] == session_id)
+            and (status is None or a["status"] == status)
+            and (user_id is None or a["user_id"] == user_id)
+            and (type is None or a["type"] == type)
+            and (before is None or a["created_at"] < before)
         ]
-        return sorted(rows, key=lambda a: a["created_at"], reverse=True)
+        rows.sort(key=lambda a: a["created_at"], reverse=True)
+        return rows[:limit] if limit is not None else rows
 
     async def get_alert(self, alert_id: UUID) -> Row | None:
         return self._alerts.get(alert_id)

@@ -16,7 +16,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from config import THRESHOLDS, Settings
-from live import hub
+from live import alerts, hub
 from live.hub import SessionState, post_all
 from live.stats import FrameStats
 from schemas import Envelope, ErrorCode, FramePayload, FrameResult
@@ -71,12 +71,13 @@ class PendingFrame:
 
 class FrameWorker:
     def __init__(self, session_id: UUID, state: SessionState, settings: Settings,
-                 send: SendFn, send_error: ErrorFn, hello_ts: int) -> None:
+                 send: SendFn, send_error: ErrorFn, hello_ts: int, hub_: Any = None) -> None:
         self.session_id = session_id
         self.state = state
         self.settings = settings
         self.send = send
         self.send_error = send_error
+        self.hub = hub_  # SessionHub: hazard alerts need the repo (BE-10)
         self.stats = FrameStats(f"session {str(session_id)[:8]}")
         # Smallest (server time - client ts) seen; removes phone/laptop clock skew from the age check.
         self.clock_offset = now_ms() - hello_ts
@@ -84,7 +85,7 @@ class FrameWorker:
         self._pending: PendingFrame | None = None
         self._wakeup = asyncio.Event()
         self._create_failed_logged = False
-        self._background: set[asyncio.Task] = set()  # keeps debug-save tasks alive until done
+        self._background: set[asyncio.Task] = set()  # keeps debug-save and alert tasks alive until done
         self._task = asyncio.create_task(self._run(), name=f"frames-{session_id}")
 
     # --- receive side (called from the socket loop) ---
@@ -106,9 +107,7 @@ class FrameWorker:
             return
         self.received += 1
         if self.settings.debug_save_frames and self.received % DEBUG_EVERY == 0:
-            task = asyncio.create_task(asyncio.to_thread(self._save_debug_frame, frame.frame_id, jpeg))
-            self._background.add(task)
-            task.add_done_callback(self._background.discard)
+            self._spawn(asyncio.to_thread(self._save_debug_frame, frame.frame_id, jpeg))
         if self._pending is not None:
             self.stats.drop("superseded")  # latest frame wins
         self._pending = PendingFrame(frame.frame_id, env.ts, jpeg, frame.image, frame.width, frame.height,
@@ -151,7 +150,7 @@ class FrameWorker:
                 await self.send_error("PIPELINE_ERROR", "The vision pipeline is not available.", frame.frame_id)
                 return
             try:
-                result, decode_ms, pipeline_ms = await asyncio.to_thread(
+                result, image, decode_ms, pipeline_ms = await asyncio.to_thread(
                     self._decode_and_process, pipeline, frame)
             except InvalidFrame as exc:
                 await self.send_error("INVALID_FRAME", str(exc), frame.frame_id)
@@ -172,6 +171,20 @@ class FrameWorker:
         total_ms = (now - frame.received_at) * 1000
         self.stats.record(frame.frame_id, decode_ms, pipeline_ms, total_ms)
         self._relay(frame, payload, now, total_ms)
+        self._hazards(frame.frame_id, payload, image)
+
+    def _hazards(self, frame_id: int, result: dict, image: np.ndarray) -> None:
+        """critical/high warnings -> hazard alerts (contract 3.3), in the background."""
+        if self.hub is None or self.hub.repo is None:
+            return
+        due = alerts.due_hazards(self.state, result)
+        if due:
+            self._spawn(alerts.raise_hazards(self.hub, self.session_id, due, frame_id, image, result["detections"]))
+
+    def _spawn(self, coro: Any) -> None:
+        task = asyncio.create_task(coro)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     def _relay(self, frame: PendingFrame, result: dict, now: float, total_ms: float) -> None:
         """Guardians get the frame and its result, at most 2 per second (contract 6.2)."""
@@ -197,13 +210,13 @@ class FrameWorker:
         return self.state.pipeline
 
     @staticmethod
-    def _decode_and_process(pipeline: Any, frame: PendingFrame) -> tuple[dict, float, float]:
+    def _decode_and_process(pipeline: Any, frame: PendingFrame) -> tuple[dict, np.ndarray, float, float]:
         t0 = time.perf_counter()
         image = decode_jpeg(frame.jpeg)
         t1 = time.perf_counter()
         result = pipeline.process(image, frame.frame_id, frame.ts)
         t2 = time.perf_counter()
-        return result, (t1 - t0) * 1000, (t2 - t1) * 1000
+        return result, image, (t1 - t0) * 1000, (t2 - t1) * 1000
 
     async def close(self) -> None:
         self._task.cancel()
