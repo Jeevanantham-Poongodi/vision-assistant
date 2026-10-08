@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
 from db.repo import InMemoryRepo
 from errors import install_error_handlers
+from live import user_ws
 from live.hub import SessionHub
 from routers import sessions
 from schemas import (
@@ -131,6 +132,7 @@ def create_app(s: Settings = settings) -> FastAPI:
     )
     app.include_router(router)
     app.include_router(sessions.router)
+    app.include_router(user_ws.router)
     return app
 
 

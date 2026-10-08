@@ -47,6 +47,7 @@ class FrameRules(_Frozen):
     max_in_flight: int = 1
     max_age_ms: int = 1000  # the server drops frames older than this
     max_image_bytes: int = 5 * 1024 * 1024
+    hello_timeout_ms: int = 5000  # 5.4: no hello within this -> close 4003
 
 
 class RiskRules(_Frozen):
@@ -99,6 +100,14 @@ class Thresholds(_Frozen):
 
 
 THRESHOLDS = Thresholds()
+
+# Contract 5.4: WebSocket close codes.
+WS_CLOSE = {
+    "normal": 1000,
+    "session_not_found": 4001,  # unknown session or already ended
+    "replaced": 4002,           # a newer connection took over the session
+    "protocol": 4003,           # e.g. no valid hello within 5 s
+}
 
 
 class Settings(BaseSettings):

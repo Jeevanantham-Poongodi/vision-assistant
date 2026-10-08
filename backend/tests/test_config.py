@@ -4,7 +4,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from config import OBJECT_CLASSES, THRESHOLDS
+from config import OBJECT_CLASSES, THRESHOLDS, WS_CLOSE
 from schemas import Direction, ObjectClass, RiskLevel
 from tests.conftest import make_settings
 
@@ -73,6 +73,11 @@ def test_frame_rules():
     assert (f.target_fps, f.max_width, f.jpeg_quality, f.max_in_flight) == (5, 640, 0.65, 1)
     assert f.max_age_ms == 1000
     assert f.max_image_bytes == 5 * 1024 * 1024
+    assert f.hello_timeout_ms == 5000
+
+
+def test_websocket_close_codes():  # contract 5.4
+    assert WS_CLOSE == {"normal": 1000, "session_not_found": 4001, "replaced": 4002, "protocol": 4003}
 
 
 def test_detector_confidence():

@@ -323,6 +323,8 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `emergency` | `{ "trigger": "button" \| "voice", "note": "optional" }` (the backend attaches the last `location` received on this socket) | On demand | P1 |
 | `ping` | `{}` | Every 15 s if idle | P0 |
 
+`location`, `status` and `emergency` are accepted and ignored by the backend until BE-08/BE-10 implement them (no error is sent).
+
 **Frame rules**
 - JPEG, longest side ≤ 640 px, quality 0.6–0.7 (about 30–50 KB).
 - **Backpressure:** at most **one frame in flight**. Send the next frame only after the `frame_result` for the previous one arrives, or after 1000 ms with no reply. Never queue frames on the client.
@@ -337,7 +339,7 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `frame_result` | `FrameResult` | One per processed frame |
 | `guardian_message` | `{ "message_id": "uuid", "guardian_name": "Priya", "text": "Move slightly right.", "spoken_text": "Your guardian says: Move slightly right." }` | When a guardian sends a message |
 | `emergency_ack` | `{ "alert_id": "uuid", "status": "open" \| "acknowledged", "spoken_text": "Your guardian has been notified." }` | After `emergency` is stored, and again when a guardian acknowledges it |
-| `error` | `{ "code": "INVALID_FRAME", "message": "...", "frame_id": 1042 }` | On a bad message |
+| `error` | `{ "code": "INVALID_FRAME", "message": "...", "frame_id": 1042 }` | On a bad message. `frame_id` is `null` unless the error is about a frame. Text that is not a valid envelope (or a binary message) gets `UNSUPPORTED_MESSAGE` |
 | `pong` | `{}` | Reply to `ping` |
 
 **Speaking order on the client:** `frame_result.warnings` (critical first) > `guardian_message` > `emergency_ack` > Q&A/OCR answers.
@@ -349,7 +351,7 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `1000` | Normal close |
 | `4001` | `SESSION_NOT_FOUND` or session already ended |
 | `4002` | Replaced by a newer connection for the same session |
-| `4003` | Protocol violation (e.g. no `hello` within 5 s) |
+| `4003` | Protocol violation (e.g. no `hello` within 5 s, the first message is not `hello`, or `hello.user_id` is not the session's user) |
 
 The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every 5 s. It tells the user by voice "Connection lost, reconnecting" once, and "Connected" on recovery.
 
@@ -931,7 +933,7 @@ If the laptop has a CUDA GPU, set `device="cuda"` and raise `target_fps` to 8.
 
 ## 13. Mock data fixtures
 
-Coder 1 and Member 5 put these in `frontend/src/mocks/` and `backend/tests/fixtures/`. Ready-made copies are in `member5-starter-kit/`. **Every mock file stores the full envelope** (`v`, `type`, `ts`, `payload`), so the mock client can replay any of them the same way. Sections 13.2 and 13.3 show only the payload to save space. Coder 3's stub pipeline returns `frame_result.vehicle_right.json` before the real model is wired in.
+Coder 1 and Member 5 put these in `frontend/src/mocks/` and `backend/tests/fixtures/`. Ready-made copies are in `member5-starter-kit/`. **Every mock file stores the full envelope** (`v`, `type`, `ts`, `payload`), so the mock client can replay any of them the same way. Sections 13.2 and 13.3 show only the payload to save space. Coder 3's stub pipeline (`PIPELINE=stub`) returns `frame_result.vehicle_right.json` before the real model is wired in; the backend copy is `backend/live/fixtures/frame_result.vehicle_right.json`.
 
 ### 13.1 `frame_result.vehicle_right.json` (envelope as received over WS)
 ```json

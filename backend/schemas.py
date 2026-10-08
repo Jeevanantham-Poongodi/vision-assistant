@@ -349,3 +349,41 @@ class ErrorDetail(ContractModel):
 
 class ErrorResponse(ContractModel):  # 11.1: the body of every non-2xx REST response
     error: ErrorDetail
+
+
+# --- Section 5: user WebSocket messages ----------------------------------------------------
+
+class Envelope(ContractModel):  # 5.1, both directions
+    v: Literal[1]
+    type: str
+    ts: EpochMs
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class HelloPayload(ContractModel):
+    user_id: UUID
+    device_info: dict[str, Any] = Field(default_factory=dict)
+
+
+class FramePayload(ContractModel):
+    frame_id: Annotated[int, Field(ge=1)]
+    image: str  # base64 JPEG without the data: prefix
+    width: Annotated[int, Field(gt=0)]
+    height: Annotated[int, Field(gt=0)]
+
+
+class WelcomeConfig(ContractModel):
+    target_fps: int
+    max_width: int
+    jpeg_quality: float
+
+
+class WelcomePayload(ContractModel):
+    session_id: UUID
+    config: WelcomeConfig
+
+
+class WsErrorPayload(ContractModel):
+    code: ErrorCode
+    message: str
+    frame_id: int | None = None
