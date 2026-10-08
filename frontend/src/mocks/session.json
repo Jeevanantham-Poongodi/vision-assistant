@@ -1,0 +1,14 @@
+{
+  "session_id": "5d0e2b7c-8f6a-4f1e-9a43-0c6f6d1b2a10",
+  "user_id": "11111111-1111-1111-1111-111111111111",
+  "status": "active",
+  "started_at": "2026-10-08T10:00:00.000Z",
+  "ended_at": null,
+  "device_info": {
+    "user_agent": "Mozilla/5.0 ...",
+    "platform": "android"
+  },
+  "user_online": true,
+  "ws_url": "/ws/user/5d0e2b7c-8f6a-4f1e-9a43-0c6f6d1b2a10",
+  "guardian_ws_url": "/ws/guardian/5d0e2b7c-8f6a-4f1e-9a43-0c6f6d1b2a10"
+}
