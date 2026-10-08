@@ -15,6 +15,9 @@ dist/
 *.pt
 *.onnx
 backend/debug_frames/
+# TLS keys for the mkcert fallback (docs/07_HTTPS_DEMO.md)
+certs/
+*.pem
 # editors / OS
 .vscode/
 .idea/

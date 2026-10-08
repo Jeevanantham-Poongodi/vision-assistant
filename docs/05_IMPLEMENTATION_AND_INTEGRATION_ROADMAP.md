@@ -138,7 +138,7 @@ Conflicts mostly happen when two people edit the same file. Our folder layout (c
 | Path | Owner | Others may… |
 |---|---|---|
 | `docs/API_CONTRACTS.md` | Coder 3 | Request changes (section 14.2) |
-| `backend/main.py`, `config.py`, `schemas.py`, `realtime/`, `db/`, `tools/` | Coder 3 | Read only |
+| `backend/main.py`, `config.py`, `schemas.py`, `live/`, `db/`, `tools/` | Coder 3 | Read only |
 | `backend/vision/`, `backend/safety/` | Coder 2 | Read only |
 | `backend/speech/`, `backend/ocr/`, `backend/ai/`, `backend/navigation/` | Coder 4 | Read only |
 | `backend/tests/<area>/` | The area owner | Member 5 may add test cases |

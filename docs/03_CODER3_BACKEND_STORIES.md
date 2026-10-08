@@ -2,7 +2,7 @@
 
 **Mission:** Build the spine everything plugs into: the FastAPI app, the two WebSocket channels, the session hub that connects a user to their guardians, the Supabase layer, and the HTTPS setup that makes the phone demo possible. You are also the **owner of `API_CONTRACTS.md`**.
 
-**You own:** `backend/main.py`, `config.py`, `schemas.py`, `realtime/`, `db/`, `tools/`, deployment and tunnel setup. Your branch: `backend-api`. You are also the **Integration Captain** at every checkpoint (roadmap §6).
+**You own:** `backend/main.py`, `config.py`, `schemas.py`, `live/`, `db/`, `tools/`, deployment and tunnel setup. Your branch: `backend-api`. You are also the **Integration Captain** at every checkpoint (roadmap §6).
 **Contract sections you implement:** all of 5, 6, 7, 10, 11; you enforce 1 and 12.
 **You depend on:** Coder 2 (`VisionPipeline`), Coder 4 (`phrases`, `reader`, `gemini`).
 **You unblock:** Coder 1 (the socket is the first thing they need), Member 5 (Postman).
@@ -88,7 +88,7 @@
 **As a** guardian, **I want** to receive the user's live view, alerts, location and status in one stream, **so that** I can monitor them remotely.
 
 **Acceptance criteria**
-- [ ] `realtime/hub.py`: per session, one user socket plus a set of guardian sockets, and the latest frame/result/location/status. All sends are wrapped so one dead guardian socket never breaks the user loop.
+- [ ] `live/hub.py`: per session, one user socket plus a set of guardian sockets, and the latest frame/result/location/status. All sends are wrapped so one dead guardian socket never breaks the user loop.
 - [ ] `/ws/guardian/{session_id}?guardian_id=` per contract 6: checks the guardian is linked to the session's user (`guardian_links`); replies `welcome` with session, user and `open_alerts`.
 - [ ] Relays `snapshot` and `frame_result` (without the image) at max 2 per second, `location` as received, `user_status` every 2 s and immediately on online/offline change.
 - [ ] User socket closes or goes silent for 10 s → `user_status.online = false` and a `system` alert.

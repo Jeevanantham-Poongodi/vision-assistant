@@ -39,11 +39,11 @@ This file is the single source of truth that lets all five of us work in paralle
 | Distances | meters, float, rounded to 1 decimal place. `null` when unknown |
 | Coordinates | Image: pixels in the frame as it was sent (origin top-left). Geo: WGS84 `lat`/`lng` |
 | Images over JSON | Base64-encoded JPEG **without** the `data:image/jpeg;base64,` prefix |
-| Auth (MVP) | None. The seeded demo user and guardian IDs (section 10) are passed explicitly. Do not ship this beyond the demo |
+| Auth | MVP: none. The seeded demo user and guardian IDs (section 10) are passed explicitly. **Optional demo tokens (BE-17, `AUTH_REQUIRED=true`):** REST sends `Authorization: Bearer <token>`, WebSockets add `?token=<token>`; tokens come from `POST /api/v1/auth/demo-token` (7.19). A user may act only on their own sessions, a guardian only on linked users. Missing or invalid token → **401** `UNAUTHORIZED` (WS close `4004`); right token, wrong person or role → **403** `FORBIDDEN` (WS close `4004`). `/health`, `/config` and `/docs` stay open. Do not ship either mode beyond the demo |
 | CORS | Backend allows the Vite dev origin and the tunnel origin |
 | Supabase access | **Backend only.** The frontend never talks to Supabase directly; the service-role key stays on the server |
 
-> **HTTPS note.** Browsers only allow camera and microphone access (`getUserMedia`, Web Speech) in a secure context. `localhost` counts as secure. A phone on your Wi-Fi hitting `http://192.168.x.x` does **not**. For the phone demo, put both frontend and backend behind HTTPS (a `cloudflared`/`ngrok` tunnel, or `mkcert` + `vite --https`). WebSockets then use `wss://`.
+> **HTTPS note.** Browsers only allow camera and microphone access (`getUserMedia`, Web Speech) in a secure context. `localhost` counts as secure. A phone on your Wi-Fi hitting `http://192.168.x.x` does **not**. For the phone demo, put both frontend and backend behind HTTPS (a `cloudflared`/`ngrok` tunnel, or `mkcert` + `vite --https`). WebSockets then use `wss://`. `python -m tools.tunnels` starts both Cloudflare tunnels and prints the frontend `.env` values; set `ALLOWED_ORIGIN_REGEX` so new tunnel URLs pass CORS. Guide: `docs/07_HTTPS_DEMO.md`.
 
 ---
 
@@ -159,7 +159,14 @@ These values live in the backend config and are exposed by `GET /api/v1/config` 
 | Path clear | `path_clear = true` when no object with `distance_m < 3.0` is in the walking corridor |
 
 ### 3.3 Hazard alerts to the guardian
-A `hazard` alert is persisted and pushed to guardians only for `critical`/`high` warnings, at most **one per 10 s per cooldown key**, so the guardian feed does not flood.
+A `hazard` alert is persisted and pushed to guardians only for `critical`/`high` warnings, at most **one per 10 s per cooldown key**, so the guardian feed does not flood. Content: `title` = the warning's `short_text`, `message` = the spoken sentence, `risk_level` = the warning's level, `location` = the last known location, and the stored `payload` holds the triggering `Detection`, the `Warning` and the `frame_id`. With `PIPELINE=stub` the mock car warning (`high`) raises one hazard alert per 10 s while frames stream.
+
+### 3.4 User online / offline
+- The user is **online** while their socket is connected and they have sent any valid message within the last **10 s**. This is why an idle phone pings every 5 s.
+- **Socket closed:** guardians get `user_status` with `online: false` immediately. If the phone is not back within 10 s, a `system` alert is raised. A reconnect inside that window (the client's backoff is 0.5–4 s) raises nothing. A connection replaced by a newer one (`4002`) never shows as offline, and ending the session through `POST /sessions/{id}/end` raises no alert.
+- **Socket open but silent for more than 10 s:** `online: false` and the same alert. The next message from the phone sets `online: true` again.
+- The alert is `type: "system"`, `risk_level: "high"`, title "User went offline", with the last known location. At most **one per offline period** and **one per 60 s per session**.
+- REST `Session.user_online` follows the same rule.
 
 ---
 
@@ -282,7 +289,7 @@ Pixel coordinates in the submitted frame. `x1 < x2`, `y1 < y2`.
   "acknowledged_at": null
 }
 ```
-`snapshot_b64` is a small JPEG (max 320 px wide) of the frame at alert time, if one is available. It is sent over WebSocket only and is not stored in the database.
+`snapshot_b64` is a small JPEG (max 320 px wide) of the frame at alert time, if one is available. It is sent over WebSocket only and is not stored in the database (REST responses carry `null`). It comes from Coder 2's `make_thumbnail` (CV-11, boxes drawn); until that exists, the backend sends the plain frame scaled to 320 px.
 
 ### 4.7 `Session`
 ```json
@@ -321,12 +328,16 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `location` | `Location` | Every 5 s or on 10 m movement | P1 |
 | `status` | `{ "battery_pct": 64, "fps": 4.8, "camera": "environment" }` | Every 10 s | P1 |
 | `emergency` | `{ "trigger": "button" \| "voice", "note": "optional" }` (the backend attaches the last `location` received on this socket) | On demand | P1 |
-| `ping` | `{}` | Every 15 s if idle | P0 |
+| `ping` | `{}` | Every **5 s** if idle (the backend marks the user offline after 10 s of silence, see 3.4) | P0 |
+
+`location` is validated as a `Location` (4.5), kept as the session's latest position and relayed to guardians. `status` is kept for `user_status` (`battery_pct` must be 0–100 or `null`). An invalid `location` or `status` gets `error` `UNSUPPORTED_MESSAGE`. `emergency` creates an `emergency` alert (see 7.11) and is answered with `emergency_ack`; an invalid `trigger` gets `error` `UNSUPPORTED_MESSAGE`. **Any valid message from the phone counts as a sign of life** (see 3.4).
 
 **Frame rules**
 - JPEG, longest side ≤ 640 px, quality 0.6–0.7 (about 30–50 KB).
 - **Backpressure:** at most **one frame in flight**. Send the next frame only after the `frame_result` for the previous one arrives, or after 1000 ms with no reply. Never queue frames on the client.
-- The server also drops any frame that is older than 1000 ms when it reaches the pipeline.
+- The server also drops any frame that is older than 1000 ms when it reaches the pipeline. Age is measured against the clock offset seen since `hello` (the smallest server-receive time minus envelope `ts`), so the phone and laptop clocks do not need to match.
+- **Latest frame wins:** while a frame is being processed, only the newest waiting frame is kept. Frames dropped this way, or as too old, get **no reply**; the client's 1000 ms rule above covers them.
+- If the vision pipeline fails on a frame (or cannot be loaded), the server sends `error` `PIPELINE_ERROR` with that `frame_id`; the socket stays open.
 - `frame_id` increases monotonically per session (starting at 1). `ts` in the envelope is the capture time.
 
 ### 5.3 Server → client
@@ -337,7 +348,9 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `frame_result` | `FrameResult` | One per processed frame |
 | `guardian_message` | `{ "message_id": "uuid", "guardian_name": "Priya", "text": "Move slightly right.", "spoken_text": "Your guardian says: Move slightly right." }` | When a guardian sends a message |
 | `emergency_ack` | `{ "alert_id": "uuid", "status": "open" \| "acknowledged", "spoken_text": "Your guardian has been notified." }` | After `emergency` is stored, and again when a guardian acknowledges it |
-| `error` | `{ "code": "INVALID_FRAME", "message": "...", "frame_id": 1042 }` | On a bad message |
+| `assistance_requested` | `{ "alert_id": "uuid", "spoken_text": "I need assistance to determine the safest direction. I have asked your guardian." }` | When `frame_result.low_confidence_scene` has stayed `true` for 3 s (BE-14). One per low-confidence period, at most one per 60 s; guardians get the matching `assistance_request` alert |
+| `webrtc_offer` / `webrtc_answer` / `webrtc_ice` | The guardian's payload, unchanged, plus `guardian_id` | Relayed from a guardian (BE-15, see section 6) |
+| `error` | `{ "code": "INVALID_FRAME", "message": "...", "frame_id": 1042 }` | On a bad message. `frame_id` is `null` unless the error is about a frame. Text that is not a valid envelope (or a binary message) gets `UNSUPPORTED_MESSAGE` |
 | `pong` | `{}` | Reply to `ping` |
 
 **Speaking order on the client:** `frame_result.warnings` (critical first) > `guardian_message` > `emergency_ack` > Q&A/OCR answers.
@@ -349,7 +362,8 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 | `1000` | Normal close |
 | `4001` | `SESSION_NOT_FOUND` or session already ended |
 | `4002` | Replaced by a newer connection for the same session |
-| `4003` | Protocol violation (e.g. no `hello` within 5 s) |
+| `4003` | Protocol violation (e.g. no `hello` within 5 s, the first message is not `hello`, or `hello.user_id` is not the session's user) |
+| `4004` | `UNAUTHORIZED`: only with `AUTH_REQUIRED=true`; missing or invalid `?token=`, or a token for another person or role (BE-17) |
 
 The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every 5 s. It tells the user by voice "Connection lost, reconnecting" once, and "Connected" on recovery.
 
@@ -358,7 +372,9 @@ The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every
 ## 6. WebSocket API: guardian channel
 
 **URL:** `wss://<host>/ws/guardian/{session_id}?guardian_id={uuid}`
-Any number of guardian sockets per session.
+Any number of guardian sockets per session. Closes with `4001` if the session is unknown or ended, or `guardian_id` is missing or not linked to the session's user (one code for all three, so a guardian cannot probe for sessions). Closes with `4003` if `FEATURE_GUARDIAN=false`, if no `hello` arrives within 5 s, or if its `guardian_id` differs from the query parameter.
+
+Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `ack_alert` follows the same rules as `PATCH /alerts/{alert_id}` (7.13); success shows up as `alert_updated`, failures as `error` (`ALERT_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, or `UNSUPPORTED_MESSAGE` for a bad payload). `guardian_message` is forwarded to the phone as `guardian_message` (5.3) and answered with `message_delivered`; text must be 1–200 characters and not blank (surrounding spaces are trimmed), otherwise `error` `UNSUPPORTED_MESSAGE`. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
 
 ### 6.1 Client → server
 
@@ -379,11 +395,11 @@ Any number of guardian sockets per session.
 | `alert` | `Alert` | On creation | P1 |
 | `alert_updated` | `Alert` | On ack/resolve | P1 |
 | `location` | `Location` | Relayed as received | P1 |
-| `user_status` | `{ "online": true, "fps": 4.8, "latency_ms": 190, "battery_pct": 64, "last_seen": 1759900530120 }` | Every 2 s, and immediately when online/offline changes | P1 |
-| `message_delivered` | `{ "message_id": "uuid", "text": "..." }` | After a guardian message is forwarded to the user | P1 |
+| `user_status` | `{ "online": true, "fps": 4.8, "latency_ms": 190, "battery_pct": 64, "last_seen": 1759900530120 }` | Every 2 s, and immediately when online/offline changes. `fps` and `latency_ms` are measured on the server over the last 5 s (`latency_ms`: receive to result sent, `null` when idle); `battery_pct` comes from the phone's `status` (`null` if unknown) | P1 |
+| `message_delivered` | `{ "message_id": "uuid", "text": "...", "delivered": true }` | After every `guardian_message`. `delivered: false` means the phone was offline; the message is dropped, not queued | P1 |
 | `error` / `pong` | as in section 5 | | P0 |
 
-> **Live video.** The MVP live view is the `snapshot` stream (2 fps). Real video and two-way voice over WebRTC is P2. If it is attempted, signalling messages (`webrtc_offer`, `webrtc_answer`, `webrtc_ice`, each with an SDP/ICE payload) are relayed through these same two sockets unchanged.
+> **Live video.** The MVP live view is the `snapshot` stream (2 fps). Real video and two-way voice over WebRTC is P2. The backend relays signalling (BE-15): `webrtc_offer`, `webrtc_answer` and `webrtc_ice` from a guardian reach the phone unchanged **plus `guardian_id`**, so the phone knows whom to answer; from the phone they go to the guardian named in `payload.guardian_id`, or to every guardian when it is absent. Each message is at most 64 KB (bigger → `error` `UNSUPPORTED_MESSAGE`); a guardian's message is dropped silently while the phone is offline. Media then flows browser to browser; mobile networks may need a TURN server (frontend).
 
 ---
 
@@ -412,6 +428,7 @@ All paths are prefixed with `/api/v1`. FastAPI's auto docs at `/docs` must match
 | POST | `/navigate` | Walking route with spoken steps | C4 via C3 | P2 |
 | POST | `/tts` | Server-side TTS fallback | C4 via C3 | P2 |
 | POST | `/stt` | Server-side STT fallback | C4 via C3 | P2 |
+| POST | `/auth/demo-token` | Demo token for a seeded user or guardian (BE-17) | C3 | P2 |
 
 ### 7.2 `GET /health`
 **200**
@@ -448,7 +465,7 @@ If the user already has an `active` session, that session is returned with **200
 **200** → `Session` · **404** `SESSION_NOT_FOUND`
 
 ### 7.7 `POST /sessions/{session_id}/end`
-**200** → `Session` with `status: "ended"`. Open sockets for the session are closed with code `1000`.
+**200** → `Session` with `status: "ended"`. Open sockets for the session are closed with code `1000`. Ending an already-ended session returns **200** with the session unchanged, so the client can safely retry. **404** `SESSION_NOT_FOUND`
 
 ### 7.8 `POST /detect`
 `multipart/form-data`
@@ -458,8 +475,8 @@ If the user already has an `active` session, that session is returned with **200
 | `image` | file (JPEG/PNG, ≤ 5 MB) | yes |
 | `session_id` | string | no. When given, tracking/motion and cooldowns use that session's state. Without it, `motion` is always `"unknown"` |
 
-**200** → `FrameResult` (`frame_id` = 0 when there is no session)
-**400** `INVALID_FRAME` · **503** `MODEL_NOT_READY`
+**200** → `FrameResult`. Without `session_id`, `frame_id` is 0. With `session_id`, the session's own pipeline is used (shared with its WebSocket), `frame_id` counts up per session (1, 2, …), and the result becomes the session's latest frame for `/ask` and `/ocr`. With `PIPELINE=stub` the response is the 13.1 mock.
+**400** `INVALID_FRAME` (not JPEG/PNG, empty, or > 5 MB) · **404** `SESSION_NOT_FOUND` (unknown or ended session) · **503** `MODEL_NOT_READY` · **500** `PIPELINE_ERROR` (vision failed on this image)
 
 ### 7.9 `POST /ask`
 **Request**
@@ -491,7 +508,8 @@ If the user already has an `active` session, that session is returned with **200
 ```
 - `source` is `"gemini"`, or `"fallback"` when Gemini timed out (6 s) or failed. The fallback answer is built from the detections with templates, so the user always gets an answer.
 - **Grounding rule:** distances and directions in the answer must come from our `detections`, never from Gemini's own estimate.
-- **409** `NO_RECENT_FRAME` · **404** `SESSION_NOT_FOUND`. A Gemini failure is **not** an HTTP error; it returns 200 with `source: "fallback"`.
+- **409** `NO_RECENT_FRAME` · **404** `SESSION_NOT_FOUND` (unknown or ended) · **400** `INVALID_FRAME` (bad `image`) · **503** `MODEL_NOT_READY` when `FEATURE_ASK=false`. A Gemini failure is **not** an HTTP error; it returns 200 with `source: "fallback"`.
+- Detections and `path_info` (`path_clear`, `clear_distance_m`) come from the session's cached `FrameResult` only when it is under 3 s old; with a request `image` and no fresh result, the answer is grounded on no detections (`grounded_on.frame_id: null`).
 
 ### 7.10 `POST /ocr`
 `multipart/form-data`: `image` (file, required), `session_id` (optional), `interpret` (bool, default `true`)
@@ -512,14 +530,14 @@ If the user already has an `active` session, that session is returned with **200
 ```
 - No text found → **200** with `lines: []`, `text: ""` and `spoken_text: "I could not find any readable text. Try holding the camera closer and steady."`
 - `source` is `"tesseract"` when `interpret` is false or Gemini failed. `spoken_text` is then the cleaned OCR text, read as-is.
-- **400** `INVALID_FRAME`
+- **400** `INVALID_FRAME` · **404** `SESSION_NOT_FOUND` (if `session_id` is given and unknown or ended) · **503** `MODEL_NOT_READY` when `FEATURE_OCR=false`, when Tesseract is not installed, or when no OCR module is deployed.
 
 ### 7.11 `POST /emergency`
 **Request**
 ```json
 { "session_id": "uuid", "trigger": "button", "location": { "lat": 11.0168, "lng": 76.9558, "accuracy_m": 12.0 }, "note": null }
 ```
-**201** → `Alert` with `type: "emergency"`, `risk_level: "critical"`. The backend also pushes `alert` to every guardian socket and `emergency_ack` to the user socket.
+**201** → `Alert` with `type: "emergency"`, `risk_level: "critical"`. The backend also pushes `alert` to every guardian socket and `emergency_ack` to the user socket. The location is the request's, or else the last one the phone sent. **404** `SESSION_NOT_FOUND` for an unknown or ended session. **Repeated presses:** while an emergency is `open`, another one within 10 s (REST or WebSocket) returns that same alert and re-sends its `emergency_ack` instead of creating a duplicate.
 
 ### 7.12 `GET /alerts`
 Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200), `before` (ISO time, for paging)
@@ -528,17 +546,18 @@ Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200),
 ### 7.13 `PATCH /alerts/{alert_id}`
 **Request** `{ "status": "acknowledged", "guardian_id": "22222222-2222-2222-2222-222222222222" }`
 **200** → `Alert`. Pushes `alert_updated` to guardians and, for emergencies, `emergency_ack` to the user.
-**404** `ALERT_NOT_FOUND` · **409** `INVALID_STATUS_TRANSITION` (allowed: `open → acknowledged → resolved`, or `open → resolved`)
+**404** `ALERT_NOT_FOUND` (also when `guardian_id` is not linked to the alert's user, so alerts cannot be probed) · **409** `INVALID_STATUS_TRANSITION` (allowed: `open → acknowledged → resolved`, or `open → resolved`). The first acknowledgement records `acknowledged_by` and `acknowledged_at`. `emergency_ack` (`status: "acknowledged"`, "Your guardian has seen your emergency and is responding.") is sent once, when an emergency leaves `open`.
 
 ### 7.14 `POST /sessions/{session_id}/guardian-message`
 **Request** `{ "guardian_id": "uuid", "text": "Stop and wait." }`
-**202** → `{ "message_id": "uuid", "delivered": true }`. `delivered` is `false` if the user socket is offline (the message is not queued).
+**202** → `{ "message_id": "uuid", "delivered": true }`. `delivered` is `false` if the user socket is offline (the message is not queued). **404** `SESSION_NOT_FOUND` for an unknown or ended session or a `guardian_id` not linked to the session's user (one answer for all three). **422** for blank or over-200-character text.
 
 ### 7.15 `GET /guardians/{guardian_id}/users`
 **200**
 ```json
 { "items": [ { "user_id": "1111...", "name": "Arun", "relation": "brother", "active_session_id": "5d0e...", "online": true, "last_location": { "lat": 11.0168, "lng": 76.9558, "accuracy_m": 12.0 } } ] }
 ```
+`online` and `last_location` come from the live hub (`last_location` is the active session's latest phone `location`, else `null`). An unknown `guardian_id`, or a user's ID, returns **200** `{ "items": [] }`, so IDs cannot be probed.
 
 ### 7.16 `POST /navigate` (P2)
 **Request**
@@ -559,14 +578,18 @@ Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200),
   "geometry": { "type": "LineString", "coordinates": [[76.9558, 11.0168], [76.9560, 11.0170]] }
 }
 ```
-**404** `DESTINATION_NOT_FOUND`
+**404** `DESTINATION_NOT_FOUND` · **404** `SESSION_NOT_FOUND` · **503** `MODEL_NOT_READY` when `FEATURE_NAVIGATION=false`, when the navigation module or `MAPBOX_TOKEN` is missing, or when the provider fails or times out (15 s). A `route_id` is added if the provider does not return one.
 
 ### 7.17 `POST /tts` (P2)
-**Request** `{ "text": "Hello", "lang": "en-IN" }` → **200** `audio/mpeg` body.
+**Request** `{ "text": "Hello", "lang": "en-IN" }` (text 1–1000 characters) → **200** `audio/mpeg` body. **422** for an invalid `lang`; **503** `MODEL_NOT_READY` when the server-side TTS module is missing or fails.
 
 ### 7.18 `POST /stt` (P2)
-`multipart/form-data`: `audio` (webm/ogg/wav, ≤ 30 s), `lang` (default `en-IN`) → **200** `{ "text": "what is in front of me", "confidence": 0.88 }`
+`multipart/form-data`: `audio` (webm/ogg/wav, ≤ 30 s; the backend rejects other types and files over 10 MB with **422**), `lang` (default `en-IN`) → **200** `{ "text": "what is in front of me", "confidence": 0.88 }`. **503** `MODEL_NOT_READY` when the server-side STT module is missing or fails.
 
+
+### 7.19 `POST /auth/demo-token` (P2, BE-17)
+**Request** `{ "user_id": "uuid" }` → **200** `{ "token": "...", "user_id": "uuid", "role": "user" | "guardian", "expires_at": "ISO time" }` (valid 12 h). **404** `USER_NOT_FOUND`.
+Demo only: there is no password, so anyone can get a token for a seeded person. It lets the frontend exercise `AUTH_REQUIRED=true`; it does not protect real data. Tokens are HMAC-SHA256 signed with `AUTH_SECRET`.
 ---
 
 ## 8. Internal Python module contracts
@@ -579,7 +602,9 @@ backend/
 ├── main.py                  # C3: app, routers, startup (loads models once)
 ├── config.py                # C3: settings + thresholds (section 3)
 ├── schemas.py               # C3: Pydantic models = section 4
-├── realtime/
+├── errors.py                # C3: AppError + error handlers (section 11)
+├── routers/                 # C3: REST routers (sessions.py, ...)
+├── live/
 │   ├── hub.py               # C3: session hub, user + guardian sockets
 │   ├── user_ws.py           # C3
 │   └── guardian_ws.py       # C3
@@ -655,6 +680,8 @@ class VisionPipeline:
 ```
 
 ### 8.3 Speech text, OCR, Gemini (Coder 4)
+> **Implementation note (BE-12).** `backend/integrations.py` calls these through adapters: it tries the module paths below first, then Coder 4's current ones (`ai.ocr.read_text`, `ai.ocr_interpreter.interpret_ocr`), accepts sync or async functions and tuple or dict results, and normalises OCR confidence to 0–1. Agree the final names with Coder 4 and update this section.
+
 ```python
 # speech/phrases.py
 def build_warning_message(det: dict, risk_level: str, rule_id: str) -> str: ...
@@ -678,7 +705,7 @@ async def interpret_ocr(ocr_text: str, image_jpeg: bytes | None, timeout_s: floa
 ```
 
 ### 8.4 Rules for every internal module
-- No module except `db/` touches Supabase. No module except `realtime/` touches sockets.
+- No module except `db/` touches Supabase. No module except `live/` touches sockets.
 - Vision and OCR functions are **synchronous**. Coder 3 runs them with `await asyncio.to_thread(...)` so the event loop never blocks.
 - Models load **once** at startup (FastAPI lifespan), never per request.
 - Every module ships a `if __name__ == "__main__":` demo that runs on a webcam or a sample image without FastAPI.
@@ -748,7 +775,7 @@ export interface SpeechService {
 }
 
 // Utterance priorities: warnings use Warning.priority (100 / 80 / 50);
-// guardian_message 70; emergency_ack and system messages 60; Q&A / OCR answers 40.
+// guardian_message 70; emergency_ack, assistance_requested and system messages 60; Q&A / OCR answers 40.
 // A higher-priority utterance waits for the current one to finish unless interrupt=true.
 
 export interface ListenResult { transcript: string; confidence: number; intent: VoiceIntent; }
@@ -790,6 +817,7 @@ CAMERA_FOCAL_PX=              # from Coder 2's calibration script
 TESSERACT_CMD=/usr/bin/tesseract
 MAPBOX_TOKEN=                 # P2
 ALLOWED_ORIGINS=http://localhost:5173,https://<tunnel>
+ALLOWED_ORIGIN_REGEX=              # demo only: ^https://[a-z0-9-]+\.trycloudflare\.com$
 ```
 
 ---
@@ -877,6 +905,13 @@ insert into guardian_links (guardian_id, user_id, relation) values
 - Stored: users, guardian links, sessions, alerts (hazard alerts throttled per section 3.3), location pings (at most one every 10 s per session).
 - Not stored: camera frames, per-frame detections. They stay in memory. Say this in the pitch: it is a privacy point judges like.
 
+**How the backend uses Supabase (BE-09)**
+- Only with `FEATURE_ALERTS_DB=true` and both `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set; otherwise everything stays in memory.
+- Memory is the working copy: every request reads from it, so no request waits on Supabase. Each write goes to memory first and is then sent to Supabase **in order** by one background task (an alert never arrives before its session).
+- At startup the backend loads users, guardian links, **active** sessions and their **open** alerts. After a restart the phone reconnects to the same session and guardians still see open alerts. Ended sessions are not loaded.
+- If Supabase is unreachable, the app keeps working from memory and logs one warning per 30 s with a count of failed writes; **writes made during the outage are not retried**. At startup it falls back to the seed users above.
+- Check the setup with `python -m tools.check_supabase` (from `backend/`).
+
 ---
 
 ## 11. Error model
@@ -885,7 +920,7 @@ insert into guardian_links (guardian_id, user_id, relation) values
 ```json
 { "error": { "code": "SESSION_NOT_FOUND", "message": "Session 5d0e... does not exist or has ended.", "details": {} } }
 ```
-Coder 3 adds exception handlers so FastAPI's default 422 body is converted to this shape with `code: "VALIDATION_ERROR"` and the field errors in `details`.
+Coder 3 adds exception handlers so FastAPI's default 422 body is converted to this shape with `code: "VALIDATION_ERROR"` and the field errors in `details` as `{"errors": [{"loc": ["body", "user_id"], "msg": "...", "type": "uuid_parsing"}]}`. Backend code raises `errors.AppError(code, message)`; the HTTP status comes from the table below. Unhandled exceptions return `INTERNAL` with a generic message; the stack trace goes to the server log only.
 
 ### 11.2 Error codes
 
@@ -903,6 +938,11 @@ Coder 3 adds exception handlers so FastAPI's default 422 body is converted to th
 | `UNSUPPORTED_MESSAGE` | WS | Unknown `type` |
 | `PIPELINE_ERROR` | WS / 500 | Vision crash on one frame (the socket stays open) |
 | `INTERNAL` | 500 | Anything else |
+| `NOT_FOUND` | 404 | Unknown path (raised by the framework) |
+| `METHOD_NOT_ALLOWED` | 405 | Wrong HTTP method on a known path (raised by the framework) |
+| `BAD_REQUEST` | 400 | Any other client error raised by the framework |
+| `UNAUTHORIZED` | 401 / WS 4004 | Only with `AUTH_REQUIRED=true`: missing, invalid or expired token (BE-17) |
+| `FORBIDDEN` | 403 / WS 4004 | Only with `AUTH_REQUIRED=true`: a valid token for another person or role (BE-17) |
 
 ---
 
@@ -926,7 +966,7 @@ If the laptop has a CUDA GPU, set `device="cuda"` and raise `target_fps` to 8.
 
 ## 13. Mock data fixtures
 
-Coder 1 and Member 5 put these in `frontend/src/mocks/` and `backend/tests/fixtures/`. Ready-made copies are in `member5-starter-kit/`. **Every mock file stores the full envelope** (`v`, `type`, `ts`, `payload`), so the mock client can replay any of them the same way. Sections 13.2 and 13.3 show only the payload to save space. Coder 3's stub pipeline returns `frame_result.vehicle_right.json` before the real model is wired in.
+Coder 1 and Member 5 put these in `frontend/src/mocks/` and `backend/tests/fixtures/`. Ready-made copies are in `member5-starter-kit/`. **Every mock file stores the full envelope** (`v`, `type`, `ts`, `payload`), so the mock client can replay any of them the same way. Sections 13.2 and 13.3 show only the payload to save space. Coder 3's stub pipeline (`PIPELINE=stub`) returns `frame_result.vehicle_right.json` before the real model is wired in; the backend copy is `backend/live/fixtures/frame_result.vehicle_right.json`.
 
 ### 13.1 `frame_result.vehicle_right.json` (envelope as received over WS)
 ```json
