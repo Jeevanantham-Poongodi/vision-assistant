@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer, model_validator
 
 # --- Section 2: shared enums ---------------------------------------------------------------
 
@@ -268,9 +268,20 @@ class AlertUpdate(ContractModel):  # 7.13; "open" is never a valid target
     guardian_id: UUID
 
 
+def _spoken_text(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("text must not be blank")
+    return value
+
+
+# 1-200 characters, not blank; surrounding whitespace is trimmed (contract 6.1 and 7.14).
+MessageText = Annotated[str, Field(min_length=1, max_length=200), AfterValidator(_spoken_text)]
+
+
 class GuardianMessageRequest(ContractModel):  # 7.14
     guardian_id: UUID
-    text: Annotated[str, Field(min_length=1, max_length=200)]
+    text: MessageText
 
 
 class GuardianMessageResponse(ContractModel):
@@ -443,3 +454,22 @@ class EmergencyAckPayload(ContractModel):  # 5.3 server -> client "emergency_ack
 class AckAlertPayload(ContractModel):  # 6.1 guardian -> server "ack_alert"
     alert_id: UUID
     status: Literal["acknowledged", "resolved"]
+
+
+# --- Guardian messages (BE-11) -------------------------------------------------------------
+
+class GuardianMessagePayload(ContractModel):  # 6.1 guardian -> server "guardian_message"
+    text: MessageText
+
+
+class UserGuardianMessage(ContractModel):  # 5.3 server -> phone "guardian_message"
+    message_id: UUID
+    guardian_name: str
+    text: str
+    spoken_text: str
+
+
+class MessageDeliveredPayload(ContractModel):  # 6.2 server -> guardian "message_delivered"
+    message_id: UUID
+    text: str
+    delivered: bool  # false: the phone was offline; messages are not queued

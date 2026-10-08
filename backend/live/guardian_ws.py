@@ -1,7 +1,7 @@
 # backend/live/guardian_ws.py
 """Guardian WebSocket, contract section 6 (BE-08). Owner: Coder 3.
-Live view (welcome, snapshots, results, location, user_status, alerts) and ack_alert (BE-10).
-guardian_message is accepted and ignored until BE-11."""
+Live view (welcome, snapshots, results, location, user_status, alerts), ack_alert (BE-10) and
+guardian_message (BE-11)."""
 import asyncio
 import logging
 from typing import Any
@@ -13,17 +13,20 @@ from pydantic import ValidationError
 from config import WS_CLOSE
 from errors import AppError
 from live import alerts
+from live.messages import send_guardian_message
 from live import hub as hub_module
 from live.hub import GuardianConnection, SessionHub, to_alert
 from live.user_ws import receive_text, wait_for_hello
 from routers.sessions import to_session
 from schemas import (
     AckAlertPayload,
+    GuardianMessagePayload,
     Envelope,
     ErrorCode,
     GuardianHelloPayload,
     GuardianUser,
     GuardianWelcomePayload,
+    MessageDeliveredPayload,
     WsErrorPayload,
 )
 
@@ -31,7 +34,7 @@ log = logging.getLogger("vision_assistant")
 router = APIRouter()
 
 # Valid contract 6.1 types handled by later stories; accepted silently until then.
-NOT_YET_HANDLED = {"hello", "guardian_message"}
+NOT_YET_HANDLED = {"hello"}
 
 
 def post_error(conn: GuardianConnection, code: ErrorCode, message: str) -> None:
@@ -45,7 +48,7 @@ async def status_ticker(hub: SessionHub, session_id: UUID, conn: GuardianConnect
         conn.post("user_status", hub.user_status(session_id))
 
 
-async def handle_message(conn: GuardianConnection, hub: SessionHub, text: str | None) -> None:
+async def handle_message(conn: GuardianConnection, hub: SessionHub, session_id: UUID, text: str | None) -> None:
     if text is None:
         post_error(conn, "UNSUPPORTED_MESSAGE", "Binary messages are not supported; send JSON text.")
         return
@@ -56,6 +59,15 @@ async def handle_message(conn: GuardianConnection, hub: SessionHub, text: str | 
         return
     if env.type == "ping":
         conn.post("pong", {})
+    elif env.type == "guardian_message":
+        try:
+            msg = GuardianMessagePayload.model_validate(env.payload)
+        except ValidationError:
+            post_error(conn, "UNSUPPORTED_MESSAGE", "guardian_message needs text: 1-200 characters, not blank.")
+            return
+        message_id, delivered = await send_guardian_message(hub, session_id, conn.guardian_id, msg.text)
+        conn.post("message_delivered", MessageDeliveredPayload(
+            message_id=message_id, text=msg.text, delivered=delivered).model_dump(mode="json"))
     elif env.type == "ack_alert":
         try:
             ack = AckAlertPayload.model_validate(env.payload)
@@ -124,7 +136,7 @@ async def guardian_socket(ws: WebSocket, session_id: UUID) -> None:
         if state.latest_location is not None:  # a refreshed guardian page is not left empty
             conn.post("location", state.latest_location)
         while True:
-            await handle_message(conn, hub, await receive_text(ws))
+            await handle_message(conn, hub, session_id, await receive_text(ws))
     except WebSocketDisconnect:
         pass
     except Exception:

@@ -9,7 +9,15 @@ from config import API_PREFIX
 from db.repo import InMemoryRepo, Row
 from errors import AppError
 from live.hub import SessionHub
-from schemas import Session, SessionCreate, SessionList, SessionStatus
+from live.messages import send_guardian_message
+from schemas import (
+    GuardianMessageRequest,
+    GuardianMessageResponse,
+    Session,
+    SessionCreate,
+    SessionList,
+    SessionStatus,
+)
 
 router = APIRouter(prefix=f"{API_PREFIX}/sessions", tags=["sessions"])
 
@@ -86,3 +94,19 @@ async def end_session(session_id: UUID, repo: Repo, hub: Hub) -> Session:
     row = await repo.end_session(session_id)
     await hub.close_session(session_id)  # closes sockets with 1000 and drops the pipeline
     return to_session(row, hub)
+
+
+@router.post("/{session_id}/guardian-message", response_model=GuardianMessageResponse, status_code=202,
+             responses={404: {"description": "SESSION_NOT_FOUND"}})
+async def guardian_message(session_id: UUID, body: GuardianMessageRequest, repo: Repo,
+                           hub: Hub) -> GuardianMessageResponse:
+    """REST fallback for the guardian socket's guardian_message (contract 7.14). The phone speaks
+    "Your guardian says: ..."; delivered is false if it is offline (nothing is queued). Unknown or
+    ended session and unlinked guardian all answer 404, so sessions cannot be probed."""
+    session = await repo.get_session(session_id)
+    linked = session is not None and any(
+        link["user_id"] == session["user_id"] for link in await repo.get_linked_users(body.guardian_id))
+    if session is None or session["status"] != "active" or not linked:
+        raise AppError("SESSION_NOT_FOUND", f"Session {session_id} does not exist or has ended.")
+    message_id, delivered = await send_guardian_message(hub, session_id, body.guardian_id, body.text)
+    return GuardianMessageResponse(message_id=message_id, delivered=delivered)

@@ -140,6 +140,11 @@ class SessionHub:
     def state(self, session_id: UUID) -> SessionState:
         return self._sessions.setdefault(session_id, SessionState())
 
+    def latest_location(self, session_id: UUID) -> dict | None:
+        """Read-only: does not create state for a session the hub has not seen."""
+        s = self._sessions.get(session_id)
+        return s.latest_location if s is not None else None
+
     def is_online(self, session_id: UUID) -> bool:
         s = self._sessions.get(session_id)
         return s is not None and s.user_ws is not None and not s.silent

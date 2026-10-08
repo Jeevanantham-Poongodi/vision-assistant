@@ -371,7 +371,7 @@ The client reconnects with exponential backoff: 0.5 s, 1 s, 2 s, 4 s, then every
 **URL:** `wss://<host>/ws/guardian/{session_id}?guardian_id={uuid}`
 Any number of guardian sockets per session. Closes with `4001` if the session is unknown or ended, or `guardian_id` is missing or not linked to the session's user (one code for all three, so a guardian cannot probe for sessions). Closes with `4003` if `FEATURE_GUARDIAN=false`, if no `hello` arrives within 5 s, or if its `guardian_id` differs from the query parameter.
 
-Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `ack_alert` follows the same rules as `PATCH /alerts/{alert_id}` (7.13); success shows up as `alert_updated`, failures as `error` (`ALERT_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, or `UNSUPPORTED_MESSAGE` for a bad payload). `guardian_message` is accepted and ignored until BE-11. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
+Right after `welcome` the server sends the current `user_status` and, if one is known, the latest `location`, so a refreshed page is not empty. `ack_alert` follows the same rules as `PATCH /alerts/{alert_id}` (7.13); success shows up as `alert_updated`, failures as `error` (`ALERT_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, or `UNSUPPORTED_MESSAGE` for a bad payload). `guardian_message` is forwarded to the phone as `guardian_message` (5.3) and answered with `message_delivered`; text must be 1–200 characters and not blank (surrounding spaces are trimmed), otherwise `error` `UNSUPPORTED_MESSAGE`. Each guardian has its own send queue: a guardian that cannot keep up misses snapshots, and one that falls behind repeatedly is closed with `1013`; this never slows the user's socket.
 
 ### 6.1 Client → server
 
@@ -393,7 +393,7 @@ Right after `welcome` the server sends the current `user_status` and, if one is 
 | `alert_updated` | `Alert` | On ack/resolve | P1 |
 | `location` | `Location` | Relayed as received | P1 |
 | `user_status` | `{ "online": true, "fps": 4.8, "latency_ms": 190, "battery_pct": 64, "last_seen": 1759900530120 }` | Every 2 s, and immediately when online/offline changes. `fps` and `latency_ms` are measured on the server over the last 5 s (`latency_ms`: receive to result sent, `null` when idle); `battery_pct` comes from the phone's `status` (`null` if unknown) | P1 |
-| `message_delivered` | `{ "message_id": "uuid", "text": "..." }` | After a guardian message is forwarded to the user | P1 |
+| `message_delivered` | `{ "message_id": "uuid", "text": "...", "delivered": true }` | After every `guardian_message`. `delivered: false` means the phone was offline; the message is dropped, not queued | P1 |
 | `error` / `pong` | as in section 5 | | P0 |
 
 > **Live video.** The MVP live view is the `snapshot` stream (2 fps). Real video and two-way voice over WebRTC is P2. If it is attempted, signalling messages (`webrtc_offer`, `webrtc_answer`, `webrtc_ice`, each with an SDP/ICE payload) are relayed through these same two sockets unchanged.
@@ -504,7 +504,8 @@ If the user already has an `active` session, that session is returned with **200
 ```
 - `source` is `"gemini"`, or `"fallback"` when Gemini timed out (6 s) or failed. The fallback answer is built from the detections with templates, so the user always gets an answer.
 - **Grounding rule:** distances and directions in the answer must come from our `detections`, never from Gemini's own estimate.
-- **409** `NO_RECENT_FRAME` · **404** `SESSION_NOT_FOUND`. A Gemini failure is **not** an HTTP error; it returns 200 with `source: "fallback"`.
+- **409** `NO_RECENT_FRAME` · **404** `SESSION_NOT_FOUND` (unknown or ended) · **400** `INVALID_FRAME` (bad `image`) · **503** `MODEL_NOT_READY` when `FEATURE_ASK=false`. A Gemini failure is **not** an HTTP error; it returns 200 with `source: "fallback"`.
+- Detections and `path_info` (`path_clear`, `clear_distance_m`) come from the session's cached `FrameResult` only when it is under 3 s old; with a request `image` and no fresh result, the answer is grounded on no detections (`grounded_on.frame_id: null`).
 
 ### 7.10 `POST /ocr`
 `multipart/form-data`: `image` (file, required), `session_id` (optional), `interpret` (bool, default `true`)
@@ -525,7 +526,7 @@ If the user already has an `active` session, that session is returned with **200
 ```
 - No text found → **200** with `lines: []`, `text: ""` and `spoken_text: "I could not find any readable text. Try holding the camera closer and steady."`
 - `source` is `"tesseract"` when `interpret` is false or Gemini failed. `spoken_text` is then the cleaned OCR text, read as-is.
-- **400** `INVALID_FRAME`
+- **400** `INVALID_FRAME` · **404** `SESSION_NOT_FOUND` (if `session_id` is given and unknown or ended) · **503** `MODEL_NOT_READY` when `FEATURE_OCR=false`, when Tesseract is not installed, or when no OCR module is deployed.
 
 ### 7.11 `POST /emergency`
 **Request**
@@ -545,13 +546,14 @@ Query: `session_id`, `user_id`, `type`, `status`, `limit` (default 50, max 200),
 
 ### 7.14 `POST /sessions/{session_id}/guardian-message`
 **Request** `{ "guardian_id": "uuid", "text": "Stop and wait." }`
-**202** → `{ "message_id": "uuid", "delivered": true }`. `delivered` is `false` if the user socket is offline (the message is not queued).
+**202** → `{ "message_id": "uuid", "delivered": true }`. `delivered` is `false` if the user socket is offline (the message is not queued). **404** `SESSION_NOT_FOUND` for an unknown or ended session or a `guardian_id` not linked to the session's user (one answer for all three). **422** for blank or over-200-character text.
 
 ### 7.15 `GET /guardians/{guardian_id}/users`
 **200**
 ```json
 { "items": [ { "user_id": "1111...", "name": "Arun", "relation": "brother", "active_session_id": "5d0e...", "online": true, "last_location": { "lat": 11.0168, "lng": 76.9558, "accuracy_m": 12.0 } } ] }
 ```
+`online` and `last_location` come from the live hub (`last_location` is the active session's latest phone `location`, else `null`). An unknown `guardian_id`, or a user's ID, returns **200** `{ "items": [] }`, so IDs cannot be probed.
 
 ### 7.16 `POST /navigate` (P2)
 **Request**
@@ -670,6 +672,8 @@ class VisionPipeline:
 ```
 
 ### 8.3 Speech text, OCR, Gemini (Coder 4)
+> **Implementation note (BE-12).** `backend/integrations.py` calls these through adapters: it tries the module paths below first, then Coder 4's current ones (`ai.ocr.read_text`, `ai.ocr_interpreter.interpret_ocr`), accepts sync or async functions and tuple or dict results, and normalises OCR confidence to 0–1. Agree the final names with Coder 4 and update this section.
+
 ```python
 # speech/phrases.py
 def build_warning_message(det: dict, risk_level: str, rule_id: str) -> str: ...

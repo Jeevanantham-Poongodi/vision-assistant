@@ -14,9 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
 from db.repo import InMemoryRepo, SupabaseRepo
 from errors import install_error_handlers
+import integrations
 from live import guardian_ws, user_ws
 from live.hub import SessionHub
-from routers import alerts, detect, sessions
+from routers import alerts, assist, detect, guardians, sessions
 from schemas import (
     ConfigResponse,
     DetectorConfig,
@@ -124,6 +125,7 @@ def create_app(s: Settings = settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.started_at = time.monotonic()
+        integrations.export_env(s)  # Coder 4's Gemini/OCR code reads os.environ
         await app.state.repo.start()  # Supabase: load users, links, active sessions, open alerts
         app.state.models = await load_models(s)
         yield
@@ -153,6 +155,8 @@ def create_app(s: Settings = settings) -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(detect.router)
     app.include_router(alerts.router)
+    app.include_router(assist.router)
+    app.include_router(guardians.router)
     app.include_router(user_ws.router)
     app.include_router(guardian_ws.router)
     return app
