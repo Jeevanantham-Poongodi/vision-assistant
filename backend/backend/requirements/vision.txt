@@ -1,0 +1,3 @@
+# Owner: Coder 2. ultralytics already installs opencv-python, numpy and torch.
+# Do NOT add any other OpenCV package (opencv-python-headless / opencv-contrib-python).
+ultralytics
