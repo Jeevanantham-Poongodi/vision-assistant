@@ -13,6 +13,7 @@ from fastapi import WebSocketDisconnect
 from db.repo import DEMO_USER_ID
 from live import user_ws
 from schemas import FrameResult
+from vision import pipelines
 
 USER = str(DEMO_USER_ID)
 UNKNOWN = "99999999-9999-4999-8999-999999999999"
@@ -129,12 +130,12 @@ def test_frame_returns_stub_result(client):
         assert result["frame_id"] == 7
         assert result["ts_captured"] == TS
         assert result["latency_ms"] == result["ts_processed"] - result["ts_captured"]
-        assert result["detections"] == user_ws.STUB_RESULT["detections"]
-        assert result["warnings"] == user_ws.STUB_RESULT["warnings"]
+        assert result["detections"] == pipelines.STUB_RESULT["detections"]
+        assert result["warnings"] == pipelines.STUB_RESULT["warnings"]
 
 
 def test_stub_fixture_is_contract_13_1():
-    fixture = json.loads((user_ws._FIXTURE).read_text(encoding="utf-8"))
+    fixture = json.loads(pipelines.FIXTURE.read_text(encoding="utf-8"))
     assert fixture["type"] == "frame_result"
     assert fixture["payload"]["frame_id"] == 1042
     assert [w["rule"] for w in fixture["payload"]["warnings"]] == ["R3", "R6"]
@@ -222,9 +223,9 @@ def test_ending_session_closes_socket_1000(client):
         assert close_code(ws) == 1000
 
 
-# --- Real pipeline is BE-05 ---
+# --- Real pipeline without Coder 2's VisionPipeline ---
 
-def test_real_pipeline_reports_pipeline_error(make_client, monkeypatch):
+def test_real_pipeline_unavailable_reports_pipeline_error(make_client, monkeypatch):
     class FakeDetector:
         def __init__(self, *args, **kwargs): ...
         def detect(self, frame_bgr, track=True): return []

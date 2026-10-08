@@ -328,7 +328,9 @@ Unknown `type` → server replies with an `error` message (`UNSUPPORTED_MESSAGE`
 **Frame rules**
 - JPEG, longest side ≤ 640 px, quality 0.6–0.7 (about 30–50 KB).
 - **Backpressure:** at most **one frame in flight**. Send the next frame only after the `frame_result` for the previous one arrives, or after 1000 ms with no reply. Never queue frames on the client.
-- The server also drops any frame that is older than 1000 ms when it reaches the pipeline.
+- The server also drops any frame that is older than 1000 ms when it reaches the pipeline. Age is measured against the clock offset seen since `hello` (the smallest server-receive time minus envelope `ts`), so the phone and laptop clocks do not need to match.
+- **Latest frame wins:** while a frame is being processed, only the newest waiting frame is kept. Frames dropped this way, or as too old, get **no reply**; the client's 1000 ms rule above covers them.
+- If the vision pipeline fails on a frame (or cannot be loaded), the server sends `error` `PIPELINE_ERROR` with that `frame_id`; the socket stays open.
 - `frame_id` increases monotonically per session (starting at 1). `ts` in the envelope is the capture time.
 
 ### 5.3 Server → client

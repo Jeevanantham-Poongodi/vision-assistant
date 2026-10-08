@@ -1,6 +1,7 @@
 # backend/live/hub.py
 """In-memory session hub: per session, the user socket, guardian sockets and the vision
 pipeline. Owner: Coder 3. BE-04/05/08 add the frame loop, caches and relays."""
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -15,7 +16,14 @@ log = logging.getLogger("vision_assistant")
 class SessionState:
     user_ws: WebSocket | None = None
     guardian_ws: set[WebSocket] = field(default_factory=set)
-    pipeline: Any = None  # vision.pipeline.VisionPipeline, created on hello (BE-05)
+    # One pipeline per session (vision/pipelines.make_pipeline). A reconnect reuses it, so tracking
+    # history survives. Pipelines are not thread-safe: hold pipeline_lock to create or run one.
+    pipeline: Any = None
+    pipeline_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Latest processed frame, for /ask and /ocr (contract 7.9: must be < 3 s old).
+    latest_jpeg: bytes | None = None
+    latest_result: dict | None = None
+    latest_at_ms: int | None = None
 
 
 class SessionHub:

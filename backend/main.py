@@ -28,6 +28,8 @@ from schemas import (
     SpeechConfig,
 )
 
+# Without a handler, INFO lines (e.g. the per-session fps/latency summary) never show under uvicorn.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("vision_assistant")
 
 
