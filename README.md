@@ -37,6 +37,12 @@ cd frontend && npm ci && npm run dev -- --host
 <!-- Each owner adds setup notes under their own heading only. -->
 ### Coder 1 — Frontend
 ### Coder 2 — AI Vision
+
+Create one `vision.detector.Detector` instance per camera session when tracking is enabled. ByteTrack state is retained by the underlying model, so sharing a detector across sessions would mix their tracker state.
+
+#### CV-01 benchmark
+On the demo Windows environment with CPU-only PyTorch 2.14.1 (`torch.cuda.is_available() == False`), YOLOv8n at 640×480 measured **51.67 ms mean** and **55.04 ms p95** over 30 predictions after one warm-up prediction. The input was a blank 640×480 BGR frame; GPU timing was unavailable because no CUDA device was present. This meets the ≤100 ms CPU target.
+
 ### Coder 3 — Backend
 **Demo day checklist** (full guide: [docs/07_HTTPS_DEMO.md](docs/07_HTTPS_DEMO.md)):
 1. Pull `integration`; set this checkpoint's flags in `backend/.env` and `frontend/.env`.
