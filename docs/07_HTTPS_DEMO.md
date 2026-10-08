@@ -130,6 +130,7 @@ Member 5 times this switch in the network-failure drill (see the roadmap).
 | The page loads but the camera never starts | The page is on `http://` or a LAN IP | Use the tunnel URL, or the `mkcert` `https://` URL |
 | `tools.tunnels`: "cloudflared is not installed" | Not on PATH | Install it (section 1), open a new terminal, or pass `--cloudflared <path>` |
 | `tools.tunnels`: no URL within 30 s | The network blocks Cloudflare | Use the fallback (section 3) |
+| A URL was printed, but the laptop says `getaddrinfo failed` | The new name hasn't reached your network's DNS yet, and Windows cached the early "not found" | Wait a minute, run `ipconfig /flushdns`, and retry. The tunnel itself is fine; the phone on mobile data usually resolves it sooner. |
 | REST works, but the socket fails | `VITE_WS_BASE` is `ws://` or points at the frontend URL | It must be `wss://<backend>/ws` |
 | A CORS error in the browser console | The frontend origin isn't allowed | Set `ALLOWED_ORIGIN_REGEX` (tunnel) or `ALLOWED_ORIGINS` (`mkcert`), then restart the backend |
 | An old URL is dead | The tunnel was restarted | Rerun `tools.tunnels --write-env` and restart Vite |

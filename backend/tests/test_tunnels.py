@@ -103,3 +103,15 @@ def test_ws_base(base, expected):
 def test_ws_base_rejects_other_schemes():
     with pytest.raises(ValueError):
         ws_base("abc.trycloudflare.com")
+
+
+# --- health check messages ---
+
+def test_health_failure_explains_dns_lag():
+    msg = tunnels.health_failure("<urlopen error [Errno 11001] getaddrinfo failed>", "http://localhost:8765")
+    assert "ipconfig /flushdns" in msg
+
+
+def test_health_failure_names_the_real_local_port():
+    msg = tunnels.health_failure("<urlopen error [WinError 10061] refused>", "http://localhost:8765")
+    assert "http://localhost:8765" in msg and "8000" not in msg

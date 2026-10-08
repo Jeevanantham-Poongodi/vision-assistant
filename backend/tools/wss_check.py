@@ -85,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(check(args.base, args.user_id))
     except Exception as exc:
         print(f"FAIL: {type(exc).__name__}: {exc}", file=sys.stderr)
+        if "getaddrinfo" in str(exc):
+            print("Hint: a new tunnel name can take a minute to reach your DNS. Wait, run "
+                  "`ipconfig /flushdns`, and try again.", file=sys.stderr)
         return 1
     print("PASS")
     return 0

@@ -121,8 +121,20 @@ def write_frontend_env(values: dict[str, str], frontend_dir: Path = FRONTEND_DIR
     return env
 
 
-def check_health(backend_url: str, timeout_s: float = 20) -> str:
-    """The quick-tunnel DNS can take a few seconds; retry until /health answers."""
+DNS_HINT = ("the new name is not in your network's DNS yet. Wait a minute, run `ipconfig /flushdns` "
+            "(Windows caches the early 'not found'), then retry. The phone usually resolves it sooner.")
+
+
+def health_failure(error: str, local_url: str) -> str:
+    if "getaddrinfo" in error or "Name or service not known" in error or "nodename nor servname" in error:
+        return f"not reachable yet: {DNS_HINT}"
+    return f"not reachable yet ({error}). Is the backend running at {local_url}?"
+
+
+def check_health(backend_url: str, local_url: str, first_delay_s: float = 5, timeout_s: float = 60) -> str:
+    """New quick-tunnel names take a while to reach DNS. Ask too early and Windows caches the
+    'not found' answer, so wait a few seconds first, then retry until /health answers."""
+    time.sleep(first_delay_s)
     deadline = time.monotonic() + timeout_s
     last = ""
     while time.monotonic() < deadline:
@@ -131,8 +143,8 @@ def check_health(backend_url: str, timeout_s: float = 20) -> str:
                 return resp.read().decode()
         except Exception as exc:  # DNS not ready yet, backend down, ...
             last = str(exc)
-            time.sleep(1)
-    return f"not reachable yet ({last}). Is the backend running on port 8000?"
+            time.sleep(3)
+    return health_failure(last, local_url)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,7 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.write_env:
             print(f"   written to {write_frontend_env(values)}  (restart Vite to pick it up)")
         print("\n backend/.env needs once: ALLOWED_ORIGIN_REGEX=^https://[a-z0-9-]+\\.trycloudflare\\.com$")
-        print(f"\n Health through the tunnel: {check_health(backend)}")
+        print("\n Health through the tunnel: checking (a new tunnel name can take up to a minute)...", flush=True)
+        print(f" Health through the tunnel: {check_health(backend, tunnels[0].local_url)}")
         print(f" wss check: python -m tools.wss_check --base {backend}\n{bar}\n Ctrl+C to stop the tunnels.")
         while all(t.process.poll() is None for t in tunnels):
             time.sleep(1)
