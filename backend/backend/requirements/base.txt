@@ -1,0 +1,8 @@
+# Owner: Coder 3. Pin exact versions after the first install (pip freeze), e.g. fastapi==x.y.z
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-multipart
+supabase
+pytest
+httpx
