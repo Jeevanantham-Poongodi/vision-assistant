@@ -24,6 +24,7 @@ class SessionState:
     latest_jpeg: bytes | None = None
     latest_result: dict | None = None
     latest_at_ms: int | None = None
+    detect_count: int = 0  # frame_id for POST /detect calls on this session
 
 
 class SessionHub:

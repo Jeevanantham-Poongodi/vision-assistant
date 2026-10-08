@@ -46,3 +46,13 @@ def make_pipeline(settings: Settings) -> Pipeline:
     detector = Detector(model_path=settings.yolo_model, conf=THRESHOLDS.detector_confidence,
                         classes=list(OBJECT_CLASSES))
     return VisionPipeline(focal_px=settings.camera_focal_px, detector=detector)
+
+
+def make_stateless_pipeline(settings: Settings, detector: Any) -> Pipeline:
+    """For POST /detect without a session: a fresh pipeline each call, so motion is always
+    "unknown" and there are no cooldowns. It shares the detector loaded at startup."""
+    if settings.pipeline == "stub":
+        return StubPipeline()
+    from vision.pipeline import VisionPipeline
+
+    return VisionPipeline(focal_px=settings.camera_focal_px, detector=detector)

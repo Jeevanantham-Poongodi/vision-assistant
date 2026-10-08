@@ -462,8 +462,8 @@ If the user already has an `active` session, that session is returned with **200
 | `image` | file (JPEG/PNG, ≤ 5 MB) | yes |
 | `session_id` | string | no. When given, tracking/motion and cooldowns use that session's state. Without it, `motion` is always `"unknown"` |
 
-**200** → `FrameResult` (`frame_id` = 0 when there is no session)
-**400** `INVALID_FRAME` · **503** `MODEL_NOT_READY`
+**200** → `FrameResult`. Without `session_id`, `frame_id` is 0. With `session_id`, the session's own pipeline is used (shared with its WebSocket), `frame_id` counts up per session (1, 2, …), and the result becomes the session's latest frame for `/ask` and `/ocr`. With `PIPELINE=stub` the response is the 13.1 mock.
+**400** `INVALID_FRAME` (not JPEG/PNG, empty, or > 5 MB) · **404** `SESSION_NOT_FOUND` (unknown or ended session) · **503** `MODEL_NOT_READY` · **500** `PIPELINE_ERROR` (vision failed on this image)
 
 ### 7.9 `POST /ask`
 **Request**
