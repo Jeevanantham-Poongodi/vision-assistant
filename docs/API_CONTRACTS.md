@@ -579,6 +579,7 @@ backend/
 ├── main.py                  # C3: app, routers, startup (loads models once)
 ├── config.py                # C3: settings + thresholds (section 3)
 ├── schemas.py               # C3: Pydantic models = section 4
+├── errors.py                # C3: AppError + error handlers (section 11)
 ├── live/
 │   ├── hub.py               # C3: session hub, user + guardian sockets
 │   ├── user_ws.py           # C3
@@ -885,7 +886,7 @@ insert into guardian_links (guardian_id, user_id, relation) values
 ```json
 { "error": { "code": "SESSION_NOT_FOUND", "message": "Session 5d0e... does not exist or has ended.", "details": {} } }
 ```
-Coder 3 adds exception handlers so FastAPI's default 422 body is converted to this shape with `code: "VALIDATION_ERROR"` and the field errors in `details`.
+Coder 3 adds exception handlers so FastAPI's default 422 body is converted to this shape with `code: "VALIDATION_ERROR"` and the field errors in `details` as `{"errors": [{"loc": ["body", "user_id"], "msg": "...", "type": "uuid_parsing"}]}`. Backend code raises `errors.AppError(code, message)`; the HTTP status comes from the table below. Unhandled exceptions return `INTERNAL` with a generic message; the stack trace goes to the server log only.
 
 ### 11.2 Error codes
 
@@ -903,6 +904,9 @@ Coder 3 adds exception handlers so FastAPI's default 422 body is converted to th
 | `UNSUPPORTED_MESSAGE` | WS | Unknown `type` |
 | `PIPELINE_ERROR` | WS / 500 | Vision crash on one frame (the socket stays open) |
 | `INTERNAL` | 500 | Anything else |
+| `NOT_FOUND` | 404 | Unknown path (raised by the framework) |
+| `METHOD_NOT_ALLOWED` | 405 | Wrong HTTP method on a known path (raised by the framework) |
+| `BAD_REQUEST` | 400 | Any other client error raised by the framework |
 
 ---
 

@@ -329,3 +329,23 @@ class TtsRequest(ContractModel):  # 7.17 (P2)
 class SttResponse(ContractModel):  # 7.18 (P2)
     text: str
     confidence: Probability
+
+
+# --- Section 11: error model ---------------------------------------------------------------
+
+ErrorCode = Literal[
+    "VALIDATION_ERROR", "INVALID_FRAME", "USER_NOT_FOUND", "SESSION_NOT_FOUND", "ALERT_NOT_FOUND",
+    "INVALID_STATUS_TRANSITION", "NO_RECENT_FRAME", "DESTINATION_NOT_FOUND", "MODEL_NOT_READY",
+    "UNSUPPORTED_MESSAGE", "PIPELINE_ERROR", "INTERNAL",
+    "NOT_FOUND", "METHOD_NOT_ALLOWED", "BAD_REQUEST",  # raised by the framework itself
+]
+
+
+class ErrorDetail(ContractModel):
+    code: ErrorCode
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ErrorResponse(ContractModel):  # 11.1: the body of every non-2xx REST response
+    error: ErrorDetail

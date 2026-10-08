@@ -12,9 +12,11 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
+from errors import install_error_handlers
 from schemas import (
     ConfigResponse,
     DetectorConfig,
+    ErrorResponse,
     FrameConfig,
     HealthResponse,
     ModelState,
@@ -106,8 +108,15 @@ def create_app(s: Settings = settings) -> FastAPI:
         app.state.models = await load_models(s)
         yield
 
-    app = FastAPI(title="Vision Assistant API", version=APP_VERSION, lifespan=lifespan)
+    app = FastAPI(
+        title="Vision Assistant API",
+        version=APP_VERSION,
+        lifespan=lifespan,
+        # Every route documents the 11.1 error body instead of FastAPI's default HTTPValidationError.
+        responses={422: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    )
     app.state.settings = s
+    install_error_handlers(app)  # before CORS, so CORS also wraps 500 responses
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_origins,
