@@ -12,7 +12,10 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import API_PREFIX, APP_VERSION, OBJECT_CLASSES, THRESHOLDS, Settings, settings
+from db.repo import InMemoryRepo
 from errors import install_error_handlers
+from live.hub import SessionHub
+from routers import sessions
 from schemas import (
     ConfigResponse,
     DetectorConfig,
@@ -116,6 +119,9 @@ def create_app(s: Settings = settings) -> FastAPI:
         responses={422: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     )
     app.state.settings = s
+    app.state.repo = InMemoryRepo()  # BE-09 swaps in the Supabase repository
+    app.state.hub = SessionHub()
+    app.state.session_lock = asyncio.Lock()
     install_error_handlers(app)  # before CORS, so CORS also wraps 500 responses
     app.add_middleware(
         CORSMiddleware,
@@ -124,6 +130,7 @@ def create_app(s: Settings = settings) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router)
+    app.include_router(sessions.router)
     return app
 
 

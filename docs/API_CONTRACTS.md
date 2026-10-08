@@ -448,7 +448,7 @@ If the user already has an `active` session, that session is returned with **200
 **200** → `Session` · **404** `SESSION_NOT_FOUND`
 
 ### 7.7 `POST /sessions/{session_id}/end`
-**200** → `Session` with `status: "ended"`. Open sockets for the session are closed with code `1000`.
+**200** → `Session` with `status: "ended"`. Open sockets for the session are closed with code `1000`. Ending an already-ended session returns **200** with the session unchanged, so the client can safely retry. **404** `SESSION_NOT_FOUND`
 
 ### 7.8 `POST /detect`
 `multipart/form-data`
@@ -580,6 +580,7 @@ backend/
 ├── config.py                # C3: settings + thresholds (section 3)
 ├── schemas.py               # C3: Pydantic models = section 4
 ├── errors.py                # C3: AppError + error handlers (section 11)
+├── routers/                 # C3: REST routers (sessions.py, ...)
 ├── live/
 │   ├── hub.py               # C3: session hub, user + guardian sockets
 │   ├── user_ws.py           # C3
