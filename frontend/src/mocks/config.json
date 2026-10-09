@@ -1,0 +1,54 @@
+{
+  "frame": {
+    "target_fps": 5,
+    "max_width": 640,
+    "jpeg_quality": 0.65,
+    "max_in_flight": 1
+  },
+  "direction_zones": {
+    "left": [
+      0.0,
+      0.2
+    ],
+    "slight_left": [
+      0.2,
+      0.4
+    ],
+    "center": [
+      0.4,
+      0.6
+    ],
+    "slight_right": [
+      0.6,
+      0.8
+    ],
+    "right": [
+      0.8,
+      1.0
+    ]
+  },
+  "distance_zones_m": {
+    "very_close": 1.0,
+    "near": 2.0,
+    "medium": 5.0
+  },
+  "speech": {
+    "cooldown_ms": {
+      "critical": 1500,
+      "high": 3000,
+      "medium": 6000
+    },
+    "max_queue": 2,
+    "stale_ms": 2000,
+    "dedupe_ms": 3000
+  },
+  "detector": {
+    "model": "yolov8n.pt",
+    "confidence": 0.4,
+    "classes": [
+      "person",
+      "car",
+      "..."
+    ]
+  }
+}

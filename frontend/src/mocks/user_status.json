@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "user_status",
+  "ts": 1759900600000,
+  "payload": {
+    "online": true,
+    "fps": 4.8,
+    "latency_ms": 190,
+    "battery_pct": 64,
+    "last_seen": 1759900599800
+  }
+}

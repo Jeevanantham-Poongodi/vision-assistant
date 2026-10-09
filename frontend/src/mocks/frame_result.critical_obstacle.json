@@ -1,0 +1,52 @@
+{
+  "frame_id": 1100,
+  "frame_size": {
+    "width": 640,
+    "height": 480
+  },
+  "ts_captured": 1759900542000,
+  "ts_processed": 1759900542160,
+  "latency_ms": 160,
+  "inference_ms": 70,
+  "detections": [
+    {
+      "track_id": 12,
+      "class_name": "chair",
+      "spoken_name": "chair",
+      "category": "obstacle",
+      "confidence": 0.79,
+      "bbox": {
+        "x1": 230,
+        "y1": 210,
+        "x2": 420,
+        "y2": 480
+      },
+      "cx_norm": 0.507,
+      "direction": "center",
+      "distance_m": 0.7,
+      "distance_zone": "very_close",
+      "distance_method": "edge_clipped",
+      "motion": "stationary",
+      "approach_speed_mps": 0.0,
+      "risk_level": "critical",
+      "risk_score": 1.0
+    }
+  ],
+  "warnings": [
+    {
+      "warning_id": "9a7e...",
+      "track_id": 12,
+      "class_name": "chair",
+      "risk_level": "critical",
+      "priority": 100,
+      "message": "Stop. Chair about 70 centimeters directly ahead.",
+      "short_text": "Chair · ahead · 0.7 m",
+      "speak": true,
+      "interrupt": true,
+      "rule": "R1"
+    }
+  ],
+  "path_clear": false,
+  "clear_distance_m": 0.7,
+  "low_confidence_scene": false
+}

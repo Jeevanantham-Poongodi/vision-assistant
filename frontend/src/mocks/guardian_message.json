@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "guardian_message",
+  "ts": 1759900600000,
+  "payload": {
+    "message_id": "f1e2...",
+    "guardian_name": "Priya",
+    "text": "Turn right and continue straight.",
+    "spoken_text": "Your guardian says: Turn right and continue straight."
+  }
+}

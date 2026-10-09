@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GuardianRouteImport } from './routes/guardian'
 import { Route as UserRouteImport } from './routes/user'
+import { Route as DevSpeechRouteImport } from './routes/dev.speech'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const UserRoute = UserRouteImport.update({
   path: '/user',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevSpeechRoute = DevSpeechRouteImport.update({
+  id: '/dev/speech',
+  path: '/dev/speech',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRoute
   '/user': typeof UserRoute
+  '/dev/speech': typeof DevSpeechRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRoute
   '/user': typeof UserRoute
+  '/dev/speech': typeof DevSpeechRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRoute
   '/user': typeof UserRoute
+  '/dev/speech': typeof DevSpeechRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/guardian' | '/user'
+  fullPaths: '/' | '/guardian' | '/user' | '/dev/speech'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/guardian' | '/user'
-  id: '__root__' | '/' | '/guardian' | '/user'
+  to: '/' | '/guardian' | '/user' | '/dev/speech'
+  id: '__root__' | '/' | '/guardian' | '/user' | '/dev/speech'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GuardianRoute: typeof GuardianRoute
   UserRoute: typeof UserRoute
+  DevSpeechRoute: typeof DevSpeechRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dev/speech': {
+      id: '/dev/speech'
+      path: '/dev/speech'
+      fullPath: '/dev/speech'
+      preLoaderRoute: typeof DevSpeechRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,16 +106,18 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GuardianRoute: GuardianRoute,
   UserRoute: UserRoute,
+  DevSpeechRoute: DevSpeechRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

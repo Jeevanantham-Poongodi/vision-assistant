@@ -1,0 +1,91 @@
+{
+  "v": 1,
+  "type": "frame_result",
+  "ts": 1759900530310,
+  "payload": {
+    "frame_id": 1042,
+    "frame_size": {
+      "width": 640,
+      "height": 480
+    },
+    "ts_captured": 1759900530120,
+    "ts_processed": 1759900530310,
+    "latency_ms": 190,
+    "inference_ms": 74,
+    "detections": [
+      {
+        "track_id": 7,
+        "class_name": "car",
+        "spoken_name": "car",
+        "category": "vehicle",
+        "confidence": 0.91,
+        "bbox": {
+          "x1": 520,
+          "y1": 190,
+          "x2": 636,
+          "y2": 300
+        },
+        "cx_norm": 0.903,
+        "direction": "right",
+        "distance_m": 4.2,
+        "distance_zone": "medium",
+        "distance_method": "pinhole",
+        "motion": "approaching",
+        "approach_speed_mps": 1.4,
+        "risk_level": "high",
+        "risk_score": 0.86
+      },
+      {
+        "track_id": 3,
+        "class_name": "person",
+        "spoken_name": "person",
+        "category": "person",
+        "confidence": 0.88,
+        "bbox": {
+          "x1": 290,
+          "y1": 60,
+          "x2": 360,
+          "y2": 420
+        },
+        "cx_norm": 0.508,
+        "direction": "center",
+        "distance_m": 2.1,
+        "distance_zone": "medium",
+        "distance_method": "pinhole",
+        "motion": "stationary",
+        "approach_speed_mps": 0.0,
+        "risk_level": "medium",
+        "risk_score": 0.52
+      }
+    ],
+    "warnings": [
+      {
+        "warning_id": "6c1f3a8e-6a0b-4a52-9b0e-6a1fd2b7a001",
+        "track_id": 7,
+        "class_name": "car",
+        "risk_level": "high",
+        "priority": 80,
+        "message": "Warning. Car approaching from your right, approximately 4 meters away. Please move slightly to your left.",
+        "short_text": "Car · right · 4.2 m · approaching",
+        "speak": true,
+        "interrupt": false,
+        "rule": "R3"
+      },
+      {
+        "warning_id": "6c1f3a8e-6a0b-4a52-9b0e-6a1fd2b7a002",
+        "track_id": 3,
+        "class_name": "person",
+        "risk_level": "medium",
+        "priority": 50,
+        "message": "Person about 2 meters directly ahead.",
+        "short_text": "Person · ahead · 2.1 m",
+        "speak": true,
+        "interrupt": false,
+        "rule": "R6"
+      }
+    ],
+    "path_clear": false,
+    "clear_distance_m": 2.1,
+    "low_confidence_scene": false
+  }
+}

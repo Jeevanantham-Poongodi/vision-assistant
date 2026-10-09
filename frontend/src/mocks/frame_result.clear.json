@@ -1,0 +1,16 @@
+{
+  "frame_id": 1200,
+  "frame_size": {
+    "width": 640,
+    "height": 480
+  },
+  "ts_captured": 1759900560000,
+  "ts_processed": 1759900560140,
+  "latency_ms": 140,
+  "inference_ms": 66,
+  "detections": [],
+  "warnings": [],
+  "path_clear": true,
+  "clear_distance_m": null,
+  "low_confidence_scene": false
+}
