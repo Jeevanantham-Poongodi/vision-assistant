@@ -24,7 +24,10 @@ const placeholder: SpeechService = {
     console.info("[speech] (Coder 4 speech.ts not installed)", u.source, u.text);
   },
   speakWarnings(ws) {
-    console.info("[speech] (Coder 4 speech.ts not installed) warnings", ws.map((w) => w.message));
+    console.info(
+      "[speech] (Coder 4 speech.ts not installed) warnings",
+      ws.map((w) => w.message),
+    );
   },
   stop() {},
   repeatLast() {},

@@ -6,7 +6,7 @@ import type { Api } from "@/services/api";
 import type { Alert, Session } from "@/types/contracts";
 import { fixtures, mockId } from "./fixtures";
 
-const wait = <T,>(v: T, ms = 150) => new Promise<T>((r) => setTimeout(() => r(v), ms));
+const wait = <T>(v: T, ms = 150) => new Promise<T>((r) => setTimeout(() => r(v), ms));
 let active: Session | null = null;
 
 export const mockRest: Api = {
@@ -19,7 +19,12 @@ export const mockRest: Api = {
   getSession: (id) => wait({ ...fixtures.session, session_id: id }),
   endSession: (id) => {
     active = null;
-    return wait({ ...fixtures.session, session_id: id, status: "ended", ended_at: new Date().toISOString() });
+    return wait({
+      ...fixtures.session,
+      session_id: id,
+      status: "ended",
+      ended_at: new Date().toISOString(),
+    });
   },
   ask: (b) =>
     wait(
@@ -40,14 +45,20 @@ export const mockRest: Api = {
       {
         text: "",
         lines: [],
-        spoken_text: "I could not find any readable text. Try holding the camera closer and steady.",
+        spoken_text:
+          "I could not find any readable text. Try holding the camera closer and steady.",
         interpreted: false,
         source: "tesseract",
         latency_ms: 0,
       },
       900,
     ),
-  emergency: () => wait<Alert>({ ...fixtures.alertEmergency, alert_id: mockId(), created_at: new Date().toISOString() }),
+  emergency: () =>
+    wait<Alert>({
+      ...fixtures.alertEmergency,
+      alert_id: mockId(),
+      created_at: new Date().toISOString(),
+    }),
   listAlerts: () => wait({ items: [], count: 0 }),
   patchAlert: (id, b) =>
     wait<Alert>({
@@ -71,24 +82,28 @@ export const mockRest: Api = {
         },
       ],
     }),
-  navigate: (body) => wait({
-    route_id: mockId(),
-    destination_name: typeof body.destination === "string" ? body.destination : "Destination",
-    total_distance_m: 240,
-    duration_s: 190,
-    steps: [
-      {
-        index: 0,
-        maneuver: "depart",
-        distance_m: 20,
-        instruction: "Head north",
-        spoken_text: "Start walking straight for about 20 meters.",
-        location: body.origin,
+  navigate: (body) =>
+    wait({
+      route_id: mockId(),
+      destination_name: typeof body.destination === "string" ? body.destination : "Destination",
+      total_distance_m: 240,
+      duration_s: 190,
+      steps: [
+        {
+          index: 0,
+          maneuver: "depart",
+          distance_m: 20,
+          instruction: "Head north",
+          spoken_text: "Start walking straight for about 20 meters.",
+          location: body.origin,
+        },
+      ],
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [body.origin.lng, body.origin.lat],
+          [body.origin.lng + 0.0002, body.origin.lat + 0.0002],
+        ],
       },
-    ],
-    geometry: {
-      type: "LineString",
-      coordinates: [[body.origin.lng, body.origin.lat], [body.origin.lng + 0.0002, body.origin.lat + 0.0002]],
-    },
-  }),
+    }),
 };

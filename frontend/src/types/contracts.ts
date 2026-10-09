@@ -14,13 +14,7 @@ export type Category = "person" | "vehicle" | "obstacle" | "animal" | "signal" |
 export type AlertType = "hazard" | "emergency" | "assistance_request" | "system";
 export type AlertStatus = "open" | "acknowledged" | "resolved";
 export type VoiceIntent =
-  | "emergency"
-  | "read_text"
-  | "path_check"
-  | "describe"
-  | "ask"
-  | "stop_speaking"
-  | "repeat";
+  "emergency" | "read_text" | "path_check" | "describe" | "ask" | "stop_speaking" | "repeat";
 
 export interface BBox {
   x1: number;

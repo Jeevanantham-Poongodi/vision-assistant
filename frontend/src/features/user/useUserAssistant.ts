@@ -6,7 +6,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, b64ToJpegBlob, deviceInfo, friendlyError } from "@/services/api";
 import { config, DEFAULT_FRAME_CONFIG, resolveWsUrl } from "@/services/config";
-import { createRealtimeClient, type ConnectionStatus, type ManagedRealtimeClient } from "@/services/ws";
+import {
+  createRealtimeClient,
+  type ConnectionStatus,
+  type ManagedRealtimeClient,
+} from "@/services/ws";
 import { speech, speechInput } from "@/services/speech-bridge";
 import { PRIORITY } from "@/types/speech";
 import { batteryPct, beep, metersBetween, requestWakeLock } from "@/lib/browser";
@@ -25,7 +29,8 @@ import type {
 } from "@/types/contracts";
 
 export type Phase = "idle" | "starting" | "running" | "stopping";
-export type EmergencyState = "idle" | "sending" | "waiting_ack" | "retrying" | "acknowledged" | "failed";
+export type EmergencyState =
+  "idle" | "sending" | "waiting_ack" | "retrying" | "acknowledged" | "failed";
 export type WarningVerbosity = "hazards" | "everything";
 export type VoiceLanguage = "en-IN" | "ta-IN";
 
@@ -55,19 +60,27 @@ export function useUserAssistant() {
   const [navigation, setNavigation] = useState<NavigationRoute | null>(null);
   const [warningVerbosity, setWarningVerbosityState] = useState<WarningVerbosity>(() => {
     try {
-      return localStorage.getItem("vision-guardian-verbosity") === "hazards" ? "hazards" : "everything";
-    } catch { return "everything"; }
+      return localStorage.getItem("vision-guardian-verbosity") === "hazards"
+        ? "hazards"
+        : "everything";
+    } catch {
+      return "everything";
+    }
   });
   const [voiceLanguage, setVoiceLanguageState] = useState<VoiceLanguage>(() => {
     try {
       return localStorage.getItem("vision-guardian-language") === "ta-IN" ? "ta-IN" : "en-IN";
-    } catch { return "en-IN"; }
+    } catch {
+      return "en-IN";
+    }
   });
   const [voiceRate, setVoiceRateState] = useState(() => {
     try {
       const rate = Number(localStorage.getItem("vision-guardian-rate"));
       return Number.isFinite(rate) && rate >= 0.7 && rate <= 1.4 ? rate : 1.05;
-    } catch { return 1.05; }
+    } catch {
+      return 1.05;
+    }
   });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -121,7 +134,9 @@ export function useUserAssistant() {
     const g = c.getContext("2d");
     if (!g) return null;
     g.drawImage(v, 0, 0, w, h);
-    const image = c.toDataURL("image/jpeg", frameCfg.current.jpeg_quality).replace(/^data:image\/jpeg;base64,/, "");
+    const image = c
+      .toDataURL("image/jpeg", frameCfg.current.jpeg_quality)
+      .replace(/^data:image\/jpeg;base64,/, "");
     setEncodeMs(Math.round(performance.now() - t0));
     lastFrameB64.current = image;
     return { frame_id: 0, image, width: w, height: h };
@@ -163,9 +178,13 @@ export function useUserAssistant() {
           fpsRef.current = resultTimes.current.length / 2;
           setFps(fpsRef.current);
           setFrameResult(p);
-          speech.speakWarnings(warningVerbosityRef.current === "hazards"
-            ? p.warnings.filter((warning) => warning.risk_level === "critical" || warning.risk_level === "high")
-            : p.warnings);
+          speech.speakWarnings(
+            warningVerbosityRef.current === "hazards"
+              ? p.warnings.filter(
+                  (warning) => warning.risk_level === "critical" || warning.risk_level === "high",
+                )
+              : p.warnings,
+          );
         }),
         c.on<GuardianMessageToUserPayload>("guardian_message", (p) =>
           speech.speak({ text: p.spoken_text, priority: PRIORITY.guardian, source: "guardian" }),
@@ -231,7 +250,8 @@ export function useUserAssistant() {
       setFacing("environment");
       return s;
     } catch (e) {
-      if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError")) throw e;
+      if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError"))
+        throw e;
       // Laptop fallback: any camera.
       const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       setFacing("user");
@@ -256,7 +276,11 @@ export function useUserAssistant() {
         setCurrentLocation(loc);
         const last = lastSentLoc.current;
         const now = Date.now();
-        if (!last || now - last.at >= LOCATION_INTERVAL_MS || metersBetween(last.loc, loc) >= LOCATION_MOVE_M) {
+        if (
+          !last ||
+          now - last.at >= LOCATION_INTERVAL_MS ||
+          metersBetween(last.loc, loc) >= LOCATION_MOVE_M
+        ) {
           const c = clientRef.current;
           if (c?.status() === "open") {
             c.send<Location>("location", loc);
@@ -281,7 +305,11 @@ export function useUserAssistant() {
     const send = async () => {
       const c = clientRef.current;
       if (c?.status() !== "open") return;
-      c.send("status", { battery_pct: await batteryPct(), fps: Math.round(fpsRef.current * 10) / 10, camera: cam });
+      c.send("status", {
+        battery_pct: await batteryPct(),
+        fps: Math.round(fpsRef.current * 10) / 10,
+        camera: cam,
+      });
     };
     statusTimer.current = setInterval(() => void send(), STATUS_INTERVAL_MS);
   }, []);
@@ -334,7 +362,9 @@ export function useUserAssistant() {
       try {
         stream = await openCamera();
       } catch (cameraError) {
-        const denied = cameraError instanceof DOMException && (cameraError.name === "NotAllowedError" || cameraError.name === "SecurityError");
+        const denied =
+          cameraError instanceof DOMException &&
+          (cameraError.name === "NotAllowedError" || cameraError.name === "SecurityError");
         const issue = denied
           ? "Allow camera access in your browser settings, then tap Start again."
           : "No usable camera is available. Connect or enable a camera, then try again.";
@@ -389,7 +419,11 @@ export function useUserAssistant() {
   // Re-acquire wake lock after tab becomes visible again.
   useEffect(() => {
     const onVis = async () => {
-      if (document.visibilityState === "visible" && phaseRef.current === "running" && !wakeLock.current) {
+      if (
+        document.visibilityState === "visible" &&
+        phaseRef.current === "running" &&
+        !wakeLock.current
+      ) {
         wakeLock.current = await requestWakeLock();
       }
     };
@@ -400,25 +434,34 @@ export function useUserAssistant() {
   useEffect(() => () => teardown(), [teardown]);
 
   /* ---------- emergency (FE-11) ---------- */
-  const restEmergency = useCallback(async (trigger: "button" | "voice") => {
-    try {
-      const s = sessionRef.current ?? (await newSession());
-      const l = latestLoc.current;
-      await api.emergency({
-        session_id: s.session_id,
-        trigger,
-        location: l ? { lat: l.lat, lng: l.lng, ...(l.accuracy_m !== undefined ? { accuracy_m: l.accuracy_m } : {}) } : null,
-        note: null,
-      });
-      if (emergencyStateRef.current !== "acknowledged") {
-        updateEmergency("acknowledged");
-        sys("Your emergency alert was sent.");
+  const restEmergency = useCallback(
+    async (trigger: "button" | "voice") => {
+      try {
+        const s = sessionRef.current ?? (await newSession());
+        const l = latestLoc.current;
+        await api.emergency({
+          session_id: s.session_id,
+          trigger,
+          location: l
+            ? {
+                lat: l.lat,
+                lng: l.lng,
+                ...(l.accuracy_m !== undefined ? { accuracy_m: l.accuracy_m } : {}),
+              }
+            : null,
+          note: null,
+        });
+        if (emergencyStateRef.current !== "acknowledged") {
+          updateEmergency("acknowledged");
+          sys("Your emergency alert was sent.");
+        }
+      } catch {
+        updateEmergency("failed");
+        sys("I could not reach your guardian. Please call for help.", true);
       }
-    } catch {
-      updateEmergency("failed");
-      sys("I could not reach your guardian. Please call for help.", true);
-    }
-  }, [newSession, updateEmergency]);
+    },
+    [newSession, updateEmergency],
+  );
 
   const triggerEmergency = useCallback(
     async (trigger: "button" | "voice") => {
@@ -470,7 +513,11 @@ export function useUserAssistant() {
       const r = await api.ocr(b64ToJpegBlob(b64), s.session_id);
       speech.speak({ text: r.spoken_text, priority: PRIORITY.answer, source: "answer" });
     } catch (e) {
-      speech.speak({ text: e instanceof ApiError ? friendlyError(e) : "I could not read that.", priority: PRIORITY.answer, source: "answer" });
+      speech.speak({
+        text: e instanceof ApiError ? friendlyError(e) : "I could not read that.",
+        priority: PRIORITY.answer,
+        source: "answer",
+      });
     } finally {
       setBusy(null);
     }
@@ -499,27 +546,47 @@ export function useUserAssistant() {
       }
     } catch (cause) {
       speech.speak({ text: friendlyError(cause), priority: PRIORITY.answer, source: "answer" });
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   }, []);
 
   const setWarningVerbosity = useCallback((value: WarningVerbosity) => {
     warningVerbosityRef.current = value;
     setWarningVerbosityState(value);
-    try { localStorage.setItem("vision-guardian-verbosity", value); } catch { /* Storage is optional. */ }
+    try {
+      localStorage.setItem("vision-guardian-verbosity", value);
+    } catch {
+      /* Storage is optional. */
+    }
   }, []);
 
-  const setVoiceLanguage = useCallback((value: VoiceLanguage) => {
-    setVoiceLanguageState(value);
-    speech.setVoice({ lang: value, rate: voiceRate });
-    try { localStorage.setItem("vision-guardian-language", value); } catch { /* Storage is optional. */ }
-  }, [voiceRate]);
+  const setVoiceLanguage = useCallback(
+    (value: VoiceLanguage) => {
+      setVoiceLanguageState(value);
+      speech.setVoice({ lang: value, rate: voiceRate });
+      try {
+        localStorage.setItem("vision-guardian-language", value);
+      } catch {
+        /* Storage is optional. */
+      }
+    },
+    [voiceRate],
+  );
 
-  const setVoiceRate = useCallback((value: number) => {
-    const rate = Math.min(1.4, Math.max(0.7, value));
-    setVoiceRateState(rate);
-    speech.setVoice({ lang: voiceLanguage, rate });
-    try { localStorage.setItem("vision-guardian-rate", String(rate)); } catch { /* Storage is optional. */ }
-  }, [voiceLanguage]);
+  const setVoiceRate = useCallback(
+    (value: number) => {
+      const rate = Math.min(1.4, Math.max(0.7, value));
+      setVoiceRateState(rate);
+      speech.setVoice({ lang: voiceLanguage, rate });
+      try {
+        localStorage.setItem("vision-guardian-rate", String(rate));
+      } catch {
+        /* Storage is optional. */
+      }
+    },
+    [voiceLanguage],
+  );
 
   const routeIntent = useCallback(
     (intent: VoiceIntent, transcript: string) => {

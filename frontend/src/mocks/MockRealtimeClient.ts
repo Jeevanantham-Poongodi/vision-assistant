@@ -75,7 +75,12 @@ export class MockRealtimeClient implements ManagedRealtimeClient {
           config: { target_fps: 5, max_width: 640, jpeg_quality: 0.65 },
         });
         // A guardian message every 25 s, contract 13.5.
-        this.every(25000, () => this.emit("guardian_message", { ...fixtures.guardianMessage.payload, message_id: mockId() }));
+        this.every(25000, () =>
+          this.emit("guardian_message", {
+            ...fixtures.guardianMessage.payload,
+            message_id: mockId(),
+          }),
+        );
         break;
       }
       case "frame": {
@@ -121,10 +126,17 @@ export class MockRealtimeClient implements ManagedRealtimeClient {
         this.every(500, () => {
           const scene = currentScene();
           const id = frameId++;
-          this.emit<SnapshotPayload>("snapshot", { frame_id: id, image: drawMockSnapshot(scene), width: 640, height: 480 });
+          this.emit<SnapshotPayload>("snapshot", {
+            frame_id: id,
+            image: drawMockSnapshot(scene),
+            width: 640,
+            height: 480,
+          });
           this.emit<FrameResult>("frame_result", { ...scene, frame_id: id });
         });
-        this.every(2000, () => this.emit("user_status", { ...fixtures.userStatus.payload, last_seen: Date.now() }));
+        this.every(2000, () =>
+          this.emit("user_status", { ...fixtures.userStatus.payload, last_seen: Date.now() }),
+        );
         const base = { lat: 11.0168, lng: 76.9558 };
         let step = 0;
         this.every(3000, () => {
@@ -139,7 +151,11 @@ export class MockRealtimeClient implements ManagedRealtimeClient {
           });
         });
         this.later(8000, () => {
-          const a: Alert = { ...fixtures.alertEmergency, alert_id: mockId(), created_at: new Date().toISOString() };
+          const a: Alert = {
+            ...fixtures.alertEmergency,
+            alert_id: mockId(),
+            created_at: new Date().toISOString(),
+          };
           this.alerts.set(a.alert_id, a);
           this.emit("alert", a);
         });
@@ -161,7 +177,12 @@ export class MockRealtimeClient implements ManagedRealtimeClient {
       }
       case "guardian_message": {
         const p = payload as GuardianMessageOutPayload;
-        this.later(300, () => this.emit<MessageDeliveredPayload>("message_delivered", { message_id: mockId(), text: p.text }));
+        this.later(300, () =>
+          this.emit<MessageDeliveredPayload>("message_delivered", {
+            message_id: mockId(),
+            text: p.text,
+          }),
+        );
         break;
       }
       case "ping":
@@ -216,7 +237,8 @@ function drawMockSnapshot(scene: FrameResult): string {
   g.lineTo(80, 480);
   g.fill();
   for (const d of scene.detections) {
-    g.fillStyle = d.category === "vehicle" ? "#1f2a44" : d.category === "person" ? "#6b4f3a" : "#5a4632";
+    g.fillStyle =
+      d.category === "vehicle" ? "#1f2a44" : d.category === "person" ? "#6b4f3a" : "#5a4632";
     g.fillRect(d.bbox.x1, d.bbox.y1, d.bbox.x2 - d.bbox.x1, d.bbox.y2 - d.bbox.y1);
   }
   g.fillStyle = "rgba(255,255,255,0.8)";

@@ -1,7 +1,8 @@
 /** FE-04 accessible user screen: 70% Start/Stop area, 30% Emergency (1 s long press). */
 import { useEffect, useRef, useState } from "react";
 import { Settings2 } from "lucide-react";
-import { DetectionOverlay, pathBadgeText } from "@/components/DetectionOverlay";
+import { DetectionOverlay } from "@/components/DetectionOverlay";
+import { pathBadgeText } from "@/components/detection-text";
 import { onSpoken, speech, speechInput, speechInstalled } from "@/services/speech-bridge";
 import { vibrate } from "@/lib/browser";
 import { useUserAssistant } from "./useUserAssistant";
@@ -56,19 +57,24 @@ export function UserApp() {
       source: "system",
       interrupt: true,
     });
-    void speechInput.listenOnce({ lang: voiceLanguage, timeoutMs: 15000 }).then(({ transcript }) => {
-      if (cancelled) return;
-      const destination = transcript.trim();
-      if (!destination) {
-        setDestinationStatus("No destination heard. Stop and restart the camera to try again.");
-        return;
-      }
-      setPendingDestination(destination);
-      setDestinationStatus(`Waiting for location to plan a route to ${destination}…`);
-    }).catch(() => {
-      if (cancelled) return;
-      setDestinationStatus("Microphone unavailable. Allow speech access, then restart the camera.");
-    });
+    void speechInput
+      .listenOnce({ lang: voiceLanguage, timeoutMs: 15000 })
+      .then(({ transcript }) => {
+        if (cancelled) return;
+        const destination = transcript.trim();
+        if (!destination) {
+          setDestinationStatus("No destination heard. Stop and restart the camera to try again.");
+          return;
+        }
+        setPendingDestination(destination);
+        setDestinationStatus(`Waiting for location to plan a route to ${destination}…`);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDestinationStatus(
+          "Microphone unavailable. Allow speech access, then restart the camera.",
+        );
+      });
 
     return () => {
       cancelled = true;
@@ -143,10 +149,16 @@ export function UserApp() {
 
       <header className="user-app-header flex items-center justify-between gap-2 px-4 py-2 text-base">
         <span className="flex items-center gap-2 font-bold">
-          <span className={`inline-block h-3 w-3 rounded-full ${a.conn === "open" ? "bg-success" : a.conn === "connecting" ? "bg-risk-medium" : "bg-risk-low"}`} />
+          <span
+            className={`inline-block h-3 w-3 rounded-full ${a.conn === "open" ? "bg-success" : a.conn === "connecting" ? "bg-risk-medium" : "bg-risk-low"}`}
+          />
           {a.conn === "open" ? "Connected" : a.conn === "connecting" ? "Connecting" : "Offline"}
           {a.mockMode && <span className="rounded bg-secondary px-2 text-sm">MOCK</span>}
-          {!speechInstalled && <span role="status" className="text-destructive">Voice service unavailable</span>}
+          {!speechInstalled && (
+            <span role="status" className="text-destructive">
+              Voice service unavailable
+            </span>
+          )}
         </span>
         <button
           type="button"
@@ -154,7 +166,8 @@ export function UserApp() {
             speech.unlock();
             const opening = !settingsOpen;
             setSettingsOpen(opening);
-            if (opening) speech.speak({ text: "Voice settings opened.", priority: 60, source: "system" });
+            if (opening)
+              speech.speak({ text: "Voice settings opened.", priority: 60, source: "system" });
           }}
           aria-label={settingsOpen ? "Close voice settings" : "Open voice settings"}
           aria-expanded={settingsOpen}
@@ -167,20 +180,54 @@ export function UserApp() {
       {settingsOpen && (
         <section className="user-settings" aria-label="Voice settings">
           <label htmlFor="voice-language">Voice language</label>
-          <select id="voice-language" value={a.voiceLanguage} onChange={(event) => {
-            const language = event.target.value === "ta-IN" ? "ta-IN" : "en-IN";
-            a.setVoiceLanguage(language);
-            speech.speak({ text: language === "ta-IN" ? "Tamil voice selected." : "English voice selected.", priority: 60, source: "system" });
-          }}>
+          <select
+            id="voice-language"
+            value={a.voiceLanguage}
+            onChange={(event) => {
+              const language = event.target.value === "ta-IN" ? "ta-IN" : "en-IN";
+              a.setVoiceLanguage(language);
+              speech.speak({
+                text: language === "ta-IN" ? "Tamil voice selected." : "English voice selected.",
+                priority: 60,
+                source: "system",
+              });
+            }}
+          >
             <option value="en-IN">English (India)</option>
             <option value="ta-IN">Tamil (India)</option>
           </select>
-          <label htmlFor="voice-rate">Voice speed <span>{a.voiceRate.toFixed(2)}×</span></label>
-          <input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05" value={a.voiceRate} onChange={(event) => a.setVoiceRate(Number(event.target.value))} />
+          <label htmlFor="voice-rate">
+            Voice speed <span>{a.voiceRate.toFixed(2)}×</span>
+          </label>
+          <input
+            id="voice-rate"
+            type="range"
+            min="0.7"
+            max="1.4"
+            step="0.05"
+            value={a.voiceRate}
+            onChange={(event) => a.setVoiceRate(Number(event.target.value))}
+          />
           <fieldset>
             <legend>Warning detail</legend>
-            <label><input type="radio" name="warning-verbosity" checked={a.warningVerbosity === "hazards"} onChange={() => a.setWarningVerbosity("hazards")} /> Hazards only</label>
-            <label><input type="radio" name="warning-verbosity" checked={a.warningVerbosity === "everything"} onChange={() => a.setWarningVerbosity("everything")} /> Everything</label>
+            <label>
+              <input
+                type="radio"
+                name="warning-verbosity"
+                checked={a.warningVerbosity === "hazards"}
+                onChange={() => a.setWarningVerbosity("hazards")}
+              />{" "}
+              Hazards only
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="warning-verbosity"
+                checked={a.warningVerbosity === "everything"}
+                onChange={() => a.setWarningVerbosity("everything")}
+              />{" "}
+              Everything
+            </label>
           </fieldset>
         </section>
       )}
@@ -204,18 +251,17 @@ export function UserApp() {
             />
             {running && <DetectionOverlay frame={a.frameResult} />}
 
-              {a.cameraDenied && !running && (
-                <span className="relative z-10 flex flex-col items-center gap-3 px-6 text-center">
-                  <span className="text-4xl font-bold">Camera blocked</span>
-                  <span className="max-w-md text-xl">{a.cameraIssue}</span>
-                </span>
-              )}
-              {!running && !a.cameraDenied && (
-                <span className="relative z-10 px-6 text-center text-3xl font-bold">
-                  {a.phase === "starting" ? "Turning on camera…" : "Tap here to turn on the camera"}
-                </span>
-              )}
-
+            {a.cameraDenied && !running && (
+              <span className="relative z-10 flex flex-col items-center gap-3 px-6 text-center">
+                <span className="text-4xl font-bold">Camera blocked</span>
+                <span className="max-w-md text-xl">{a.cameraIssue}</span>
+              </span>
+            )}
+            {!running && !a.cameraDenied && (
+              <span className="relative z-10 px-6 text-center text-3xl font-bold">
+                {a.phase === "starting" ? "Turning on camera…" : "Tap here to turn on the camera"}
+              </span>
+            )}
           </button>
 
           <aside className="user-instructions flex min-h-[300px] w-[32%] min-w-[220px] flex-col justify-between rounded-[24px] border-2 border-border bg-card p-4 text-left shadow-inner shadow-slate-200/50">
@@ -232,12 +278,18 @@ export function UserApp() {
                 <div className="rounded-2xl bg-background/80 px-3 py-3 text-lg font-semibold text-foreground">
                   {caption}
                 </div>
-              ) : !destinationStatus && (
-                <div className="rounded-2xl bg-background/70 px-3 py-3 text-lg font-medium text-muted-foreground">
-                  {running ? "Waiting for live guidance…" : "Tap start to begin the session."}
+              ) : (
+                !destinationStatus && (
+                  <div className="rounded-2xl bg-background/70 px-3 py-3 text-lg font-medium text-muted-foreground">
+                    {running ? "Waiting for live guidance…" : "Tap start to begin the session."}
+                  </div>
+                )
+              )}
+              {a.error && (
+                <div className="rounded-2xl bg-destructive/10 px-3 py-2 text-base font-medium text-destructive">
+                  {a.error}
                 </div>
               )}
-              {a.error && <div className="rounded-2xl bg-destructive/10 px-3 py-2 text-base font-medium text-destructive">{a.error}</div>}
               {running && a.busy && (
                 <div className="rounded-2xl bg-background/80 px-3 py-2 text-base font-medium text-foreground">
                   {a.busy === "listening" ? "🎙 Listening…" : "Thinking…"}
@@ -246,7 +298,9 @@ export function UserApp() {
             </div>
 
             {running && a.frameResult && (
-              <div className={`rounded-2xl px-3 py-3 text-base font-bold ${a.frameResult.path_clear ? "bg-success/10 text-success-foreground" : "bg-risk-high/15 text-risk-high"}`}>
+              <div
+                className={`rounded-2xl px-3 py-3 text-base font-bold ${a.frameResult.path_clear ? "bg-success/10 text-success-foreground" : "bg-risk-high/15 text-risk-high"}`}
+              >
                 {pathBadgeText(a.frameResult)}
               </div>
             )}
@@ -268,10 +322,16 @@ export function UserApp() {
           onContextMenu={(e) => e.preventDefault()}
           className="user-emergency-button relative flex h-full w-full select-none flex-col items-center justify-center overflow-hidden rounded-3xl bg-destructive text-destructive-foreground"
         >
-          <span data-holding={holding} className="hold-fill absolute inset-0 bg-foreground/25" aria-hidden="true" />
+          <span
+            data-holding={holding}
+            className="hold-fill absolute inset-0 bg-foreground/25"
+            aria-hidden="true"
+          />
           <span className="relative text-5xl font-bold">⚠ EMERGENCY</span>
           <span className="relative mt-1 text-xl font-semibold">{emergencyText[a.emergency]}</span>
-          <span className="sr-only" aria-live="assertive">{emergencyText[a.emergency]}</span>
+          <span className="sr-only" aria-live="assertive">
+            {emergencyText[a.emergency]}
+          </span>
         </button>
       </section>
     </main>

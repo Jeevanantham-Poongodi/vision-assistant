@@ -80,9 +80,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#14171c" },
       { title: "Vision & Guardian Navigation Assistant" },
-      { name: "description", content: "AI vision assistant for visually impaired users, with a live guardian dashboard." },
+      {
+        name: "description",
+        content: "AI vision assistant for visually impaired users, with a live guardian dashboard.",
+      },
       { property: "og:title", content: "Vision & Guardian Navigation Assistant" },
-      { property: "og:description", content: "AI vision assistant for visually impaired users, with a live guardian dashboard." },
+      {
+        property: "og:description",
+        content: "AI vision assistant for visually impaired users, with a live guardian dashboard.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

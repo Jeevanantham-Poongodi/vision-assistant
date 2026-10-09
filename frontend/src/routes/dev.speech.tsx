@@ -5,7 +5,8 @@ import { config } from "@/services/config";
 
 const pages = import.meta.glob<{ default?: ComponentType }>("/src/features/voice/**/*.tsx");
 const key =
-  Object.keys(pages).find((k) => /speech.*test|test.*page|devspeech/i.test(k)) ?? Object.keys(pages)[0];
+  Object.keys(pages).find((k) => /speech.*test|test.*page|devspeech/i.test(k)) ??
+  Object.keys(pages)[0];
 const VoicePage = key
   ? lazy(async () => {
       const loader = pages[key];

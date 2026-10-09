@@ -181,7 +181,7 @@ export class WebSocketRealtimeClient implements ManagedRealtimeClient {
     }
     if (code === CloseCode.SESSION_NOT_FOUND) {
       this.setStatus("closed", { code, reconnecting: true });
-      let next: string | null = null;
+      let next: string | null;
       try {
         next = (await this.opts.onSessionNotFound?.()) ?? null;
       } catch {
@@ -231,6 +231,11 @@ export class WebSocketRealtimeClient implements ManagedRealtimeClient {
 
 export type Channel = "user" | "guardian";
 
-export function createRealtimeClient(channel: Channel, opts: RealtimeClientOptions): ManagedRealtimeClient {
-  return config.useMocks ? new MockRealtimeClient(channel, opts) : new WebSocketRealtimeClient(opts);
+export function createRealtimeClient(
+  channel: Channel,
+  opts: RealtimeClientOptions,
+): ManagedRealtimeClient {
+  return config.useMocks
+    ? new MockRealtimeClient(channel, opts)
+    : new WebSocketRealtimeClient(opts);
 }

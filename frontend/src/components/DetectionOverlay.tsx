@@ -3,7 +3,8 @@
  * no risk or distance calculation happens here. SVG viewBox = frame_size, so bboxes scale
  * automatically to the displayed media (which must use object-contain).
  */
-import type { Detection, FrameResult, Motion, RiskLevel } from "@/types/contracts";
+import type { FrameResult, RiskLevel } from "@/types/contracts";
+import { detectionLabel, pathBadgeText } from "./detection-text";
 
 const RISK_MARK: Record<RiskLevel, string> = {
   critical: "‼ CRITICAL",
@@ -17,23 +18,6 @@ const RISK_DASH: Record<RiskLevel, string | undefined> = {
   medium: "10 6",
   low: "3 5",
 };
-const MOTION_ICON: Record<Motion, string> = {
-  approaching: "↗",
-  receding: "↙",
-  stationary: "•",
-  unknown: "?",
-};
-
-export function detectionLabel(d: Detection): string {
-  const dist = d.distance_m === null ? "? m" : `${d.distance_m.toFixed(1)} m`;
-  return `${d.spoken_name} · ${d.direction.replace("_", " ")} · ${dist} · ${MOTION_ICON[d.motion]} ${d.motion}`;
-}
-
-export function pathBadgeText(fr: FrameResult): string {
-  if (fr.path_clear) return "Path clear";
-  if (fr.clear_distance_m !== null) return `Nearest obstacle ${fr.clear_distance_m.toFixed(1)} m`;
-  return "Path not clear";
-}
 
 export function DetectionOverlay({ frame }: { frame: FrameResult | null }) {
   if (!frame) return null;
@@ -49,7 +33,16 @@ export function DetectionOverlay({ frame }: { frame: FrameResult | null }) {
       {/* walking corridor (slight_left + center + slight_right) */}
       <rect x={w * 0.2} y={0} width={w * 0.6} height={h} className="fill-corridor" />
       {[0.2, 0.4, 0.6, 0.8].map((z) => (
-        <line key={z} x1={w * z} x2={w * z} y1={0} y2={h} className="stroke-zone" strokeWidth={1} strokeDasharray="4 6" />
+        <line
+          key={z}
+          x1={w * z}
+          x2={w * z}
+          y1={0}
+          y2={h}
+          className="stroke-zone"
+          strokeWidth={1}
+          strokeDasharray="4 6"
+        />
       ))}
       {frame.detections.map((d, i) => {
         const { x1, y1, x2, y2 } = d.bbox;
@@ -71,8 +64,21 @@ export function DetectionOverlay({ frame }: { frame: FrameResult | null }) {
               strokeDasharray={RISK_DASH[d.risk_level]}
               rx={4}
             />
-            <rect x={labelX} y={ly - fs - 2} width={labelWidth} height={fs + 8} className="risk-fill" rx={3} />
-            <text x={labelX + 5} y={ly} fontSize={labelFontSize} className="fill-overlay-ink font-mono" fontWeight={700}>
+            <rect
+              x={labelX}
+              y={ly - fs - 2}
+              width={labelWidth}
+              height={fs + 8}
+              className="risk-fill"
+              rx={3}
+            />
+            <text
+              x={labelX + 5}
+              y={ly}
+              fontSize={labelFontSize}
+              className="fill-overlay-ink font-mono"
+              fontWeight={700}
+            >
               {label}
             </text>
           </g>

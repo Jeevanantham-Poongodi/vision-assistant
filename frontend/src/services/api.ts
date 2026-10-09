@@ -64,7 +64,12 @@ function isErrorBody(x: unknown): x is ApiErrorBody {
   );
 }
 
-async function request<T>(method: string, path: string, body?: unknown, form?: FormData): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  form?: FormData,
+): Promise<T> {
   let res: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -76,15 +81,16 @@ async function request<T>(method: string, path: string, body?: unknown, form?: F
       signal: controller.signal,
     });
   } catch (cause) {
-    const message = cause instanceof DOMException && cause.name === "AbortError"
-      ? "Network request timed out"
-      : "Network request failed";
+    const message =
+      cause instanceof DOMException && cause.name === "AbortError"
+        ? "Network request timed out"
+        : "Network request failed";
     throw new ApiError("NETWORK", message, 0);
   } finally {
     clearTimeout(timeout);
   }
   const text = await res.text();
-  let json: unknown = null;
+  let json: unknown;
   try {
     json = text ? JSON.parse(text) : null;
   } catch {
@@ -96,7 +102,8 @@ async function request<T>(method: string, path: string, body?: unknown, form?: F
     }
     throw new ApiError("INTERNAL", `HTTP ${res.status}`, res.status);
   }
-  if (json === null) throw new ApiError("INTERNAL", "Server returned an invalid response", res.status);
+  if (json === null)
+    throw new ApiError("INTERNAL", "Server returned an invalid response", res.status);
   return json as T;
 }
 
@@ -150,6 +157,10 @@ export function b64ToJpegBlob(b64: string): Blob {
 
 export function deviceInfo() {
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
-  const platform = /android/i.test(ua) ? "android" : /iphone|ipad|ipod/i.test(ua) ? "ios" : "desktop";
+  const platform = /android/i.test(ua)
+    ? "android"
+    : /iphone|ipad|ipod/i.test(ua)
+      ? "ios"
+      : "desktop";
   return { user_agent: ua, platform };
 }
